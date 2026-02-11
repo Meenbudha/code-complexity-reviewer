@@ -1,0 +1,120 @@
+:root {
+  /* --- COLORS (Gray Dark Theme) --- */
+  --primary: #2cccc3;
+  --secondary: #5626c4;
+  --warning: #facd3d;
+  --error: #e60576;
+  
+  --bg-main: #212121;
+  --bg-panel: #2f2f2f;
+  --bg-input: #1a1a1a;
+  
+  --text-main: #e0e0e0;
+  --text-hero: #ffffff;
+  --text-dim: #a0a0a0;
+  
+  --border: #444444;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --scroll-thumb: #555;
+}
+
+/* --- LIGHT MODE OVERRIDES --- */
+.light-mode {
+  --bg-main: #ffffff;
+  --bg-panel: #f3f4f6;
+  --bg-input: #e5e7eb;
+  
+  --text-main: #111827;
+  --text-hero: #111827;
+  --text-dim: #6b7280;
+  
+  --border: #e5e7eb;
+  --shadow: rgba(0, 0, 0, 0.1);
+  --scroll-thumb: #d1d5db;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  overflow: hidden; /* Prevent body scroll, use app-layout scroll */
+  height: 100vh;
+}
+
+/* Main App Shell */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Main Content Area (Right of Sidebar) */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Header stays, content scrolls */
+}
+
+/* Scrollable Workspace */
+.scrollable-workspace {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* --- UTILITIES --- */
+.welcome-hero {
+  text-align: center;
+  padding: 40px 20px;
+  transition: all 0.5s ease;
+}
+.welcome-hero.hidden {
+  opacity: 0;
+  max-height: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  transition: all 0.5s ease;
+}
+.editor-wrapper.initial {
+  width: 70%;
+  max-width: 900px;
+  margin: 0 auto;
+  height: 600px;
+}
+.editor-wrapper.analyzed {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.analysis-panel {
+  background-color: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  opacity: 0;
+  animation: slideIn 0.5s forwards;
+}
+
+@keyframes slideIn { to { opacity: 1; } }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { 
+  background: var(--scroll-thumb); 
+  border-radius: 4px; 
+}
