@@ -13,13 +13,15 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   
-  // App State
+  // Theme & Layout
   const [darkMode, setDarkMode] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Data State
   const [history, setHistory] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   
-  // Layout State
+  // Layout Logic
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [topSectionHeight, setTopSectionHeight] = useState(600);
   const [isResizing, setIsResizing] = useState(false);
@@ -30,9 +32,8 @@ function App() {
     fetch("http://localhost:5000/history")
       .then(res => res.json())
       .then(data => {
-        // Format DB data for Sidebar
         const formattedHistory = data.map(item => ({
-          id: item._id, // MongoDB ID
+          id: item._id, 
           code: item.code,
           language: item.language,
           result: item.result,
@@ -44,39 +45,38 @@ function App() {
       .catch(err => console.error("Failed to load history:", err));
   }, []);
 
-  // --- 2. Language Validation Logic (Regex Heuristics) ---
+  // --- 2. Language Validation Logic (IMPROVED) ---
   const validateLanguage = (code, selectedLanguage) => {
-    // 1. Python Heuristics
-    const isPython = /def\s+|import\s+|from\s+.*import|print\(|if\s+.*:|elif\s+|else:|for\s+.*in\s+.*:|#\s+/.test(code);
-    
-    // 2. Java Heuristics
-    const isJava = /public\s+class|private\s+class|System\.out\.println|public\s+static\s+void\s+main|String\[\]|import\s+java\./.test(code);
+    // Using stricter boundaries and specific keywords to prevent overlaps
+    const hasPythonKeywords = /\bdef\b\s+\w+\s*\(|\bprint\s*\(|\bif\b.*:|\belif\b.*:|\belse\s*:|\bfor\b.*\bin\b.*:/.test(code);
+    const hasJavaKeywords = /\bpublic\s+class\b|\bprivate\s+class\b|System\.out\.print|\bpublic\s+static\s+void\s+main\b|\bString\s*\[\s*\]|\bimport\s+java\./.test(code);
+    const hasCKeywords = /#include\s*<|\bprintf\s*\(|\bint\s+main\s*\(|\bscanf\s*\(/.test(code);
 
-    // 3. C Heuristics
-    const isC = /#include\s+<|printf\(|int\s+main\s*\(|scanf\(|const\s+char|char\s+\*/.test(code);
-
-    if (selectedLanguage === "c") {
-      if (isPython) return { valid: false, detected: "python" };
-      if (isJava) return { valid: false, detected: "java" };
-      return { valid: true };
+    if (selectedLanguage === "java") {
+      if (hasJavaKeywords) return { valid: true }; // Prioritize true matches
+      if (hasCKeywords) return { valid: false, detected: "c" };
+      if (hasPythonKeywords) return { valid: false, detected: "python" };
+      return { valid: true }; // Default to true if ambiguous
     }
     
-    if (selectedLanguage === "java") {
-      if (isPython) return { valid: false, detected: "python" };
-      if (isC) return { valid: false, detected: "c" };
+    if (selectedLanguage === "c") {
+      if (hasCKeywords) return { valid: true };
+      if (hasJavaKeywords) return { valid: false, detected: "java" };
+      if (hasPythonKeywords) return { valid: false, detected: "python" };
       return { valid: true };
     }
 
     if (selectedLanguage === "python") {
-      if (isC) return { valid: false, detected: "c" };
-      if (isJava) return { valid: false, detected: "java" };
+      if (hasPythonKeywords) return { valid: true };
+      if (hasJavaKeywords) return { valid: false, detected: "java" };
+      if (hasCKeywords) return { valid: false, detected: "c" };
       return { valid: true };
     }
 
     return { valid: true };
   };
 
-  // --- 3. Resize Logic (Vertical Only) ---
+  // --- 3. Resize Logic ---
   const startResizing = (e) => {
     e.preventDefault();
     setIsResizing(true);
@@ -90,9 +90,7 @@ function App() {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const newHeight = e.clientY - rect.top;
-        // Limit max height to 70% of window
         const maxHeight = window.innerHeight * 0.7;
-        
         if (newHeight > 400 && newHeight < maxHeight) {
           setTopSectionHeight(newHeight);
         }
@@ -113,15 +111,13 @@ function App() {
     };
   }, [isResizing]);
 
-  // --- 4. Analysis Logic with Validation ---
+  // --- 4. Analysis Logic ---
   const analyzeCode = async () => {
-    // 1. Reset State IMMEDIATELY
-    setResult(null); // Clear previous result
-    setLoading(true); // Start loading
-    setHasAnalyzed(true); // Ensure panel structure stays visible (showing loader)
-    setRefreshKey((prev) => prev + 1); // Force re-render key
+    setRefreshKey((prev) => prev + 1);
+    setResult(null); 
+    setLoading(true); 
+    setHasAnalyzed(true); 
     
-    // Smooth transition delay
     await new Promise(r => setTimeout(r, 600));
 
     // A. Validate Language First
@@ -134,10 +130,10 @@ function App() {
       const errorResult = {
         time: "N/A",
         space: "N/A",
-        warnings: [`⚠️ Language Mismatch Detected`],
+        warnings: [`⚠️ Language Mismatch: You selected ${selectedLang} but code looks like ${detectedLang}.`],
         suggestions: [
-          `You selected ${selectedLang}, but your code looks like ${detectedLang}.`,
-          `Please change the dropdown to "${detectedLang}" or paste valid ${selectedLang} code.`
+          `Please change the dropdown to "${detectedLang}".`,
+          `Or paste valid ${selectedLang} code to proceed.`
         ]
       };
 
@@ -155,10 +151,8 @@ function App() {
       });
       const data = await response.json();
       
-      // Update with new data
       setResult(data);
       
-      // Add to History (UI Update)
       const newEntry = {
         id: data._id || Date.now(), 
         code: code,
@@ -177,11 +171,10 @@ function App() {
   };
 
   const loadFromHistory = (item) => {
-    setResult(null); // Clear current result first
-    setLoading(true); // Show loader
-    setHasAnalyzed(true); // Ensure panel opens
+    setResult(null); 
+    setLoading(true); 
+    setHasAnalyzed(true); 
     
-    // Short timeout to simulate loading/refresh
     setTimeout(() => {
         setCode(item.code);
         setLanguage(item.language);
@@ -194,13 +187,12 @@ function App() {
   const resetAnalysis = () => {
     setCode("");
     setResult(null);
-    setHasAnalyzed(false); // Only close panel on explicit reset
+    setHasAnalyzed(false); 
   };
 
   return (
     <div className={`app-shell ${darkMode ? '' : 'light-mode'}`}>
       
-      {/* 1. LEFT SIDEBAR */}
       <Sidebar 
         isOpen={isSidebarOpen} 
         history={history} 
@@ -210,17 +202,12 @@ function App() {
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
       />
 
-      {/* 2. MAIN CONTENT AREA */}
       <div className="main-content">
-        
-        {/* Header */}
         <Header darkMode={darkMode} setDarkMode={setDarkMode} />
 
-        {/* Scrollable Content */}
         <div className="scrollable-workspace">
           <div style={{ width: "100%", maxWidth: "1600px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
             
-            {/* Hero Section */}
             <div className={`welcome-hero ${hasAnalyzed ? 'hidden' : ''}`}>
               <h1 style={{ fontSize: "2.5rem", marginBottom: "10px", color: "var(--text-hero)" }}>
                 Code<span style={{ color: "var(--primary)" }}>Mind</span> AI
@@ -230,7 +217,6 @@ function App() {
               </p>
             </div>
 
-            {/* Workspace (Editor + Result) */}
             <div 
               ref={containerRef}
               style={{ 
@@ -241,7 +227,6 @@ function App() {
                 marginBottom: "5px"
               }}
             >
-              {/* Editor */}
               <div 
                 className={`editor-wrapper ${hasAnalyzed ? 'analyzed' : 'initial'}`} 
                 style={{ width: hasAnalyzed ? "auto" : undefined, flex: hasAnalyzed ? 1 : undefined, minWidth: 0, height: "100%" }}
@@ -272,7 +257,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Result Panel (Right Side - Fixed Width) */}
               {hasAnalyzed && (
                 <div className="analysis-panel" style={{ width: "420px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none", paddingLeft: "20px" }}>
                    <div style={{ paddingBottom: "10px", height: "42px" }}></div>
@@ -282,7 +266,6 @@ function App() {
                           <span style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>AI & Metrics</span>
                       </div>
                       
-                      {/* STRICT CONDITIONAL RENDERING: SHOW LOADER OR RESULT, NEVER BOTH */}
                       {loading ? (
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "300px", color: "var(--text-dim)" }}>
                            <div className="loader-spinner" style={{ width: "40px", height: "40px", border: "3px solid var(--border)", borderTop: "3px solid var(--primary)", borderRadius: "50%", animation: "spin 1s linear infinite", marginBottom: "15px" }}></div>
@@ -302,7 +285,6 @@ function App() {
               )}
             </div>
 
-            {/* Bottom Resize Handle */}
             <div 
               onMouseDown={startResizing}
               style={{ height: "15px", width: "100%", cursor: "row-resize", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.8 }}
@@ -312,7 +294,6 @@ function App() {
               <div style={{ width: "60px", height: "4px", backgroundColor: "var(--border)", borderRadius: "2px", boxShadow: "0 0 5px var(--shadow)" }}></div>
             </div>
 
-            {/* Bottom AI */}
             <div style={{ padding: "20px 0 40px 0", display: "flex", justifyContent: "center" }}>
               <div style={{ width: hasAnalyzed ? "100%" : "70%", maxWidth: hasAnalyzed ? "none" : "900px", transition: "width 0.5s ease" }}>
                 <AiAssistant code={code} />
@@ -322,7 +303,6 @@ function App() {
           </div>
         </div>
         
-        {/* CSS for Spinner */}
         <style>{`
           @keyframes spin {
             0% { transform: rotate(0deg); }

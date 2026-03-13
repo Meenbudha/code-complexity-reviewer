@@ -10,7 +10,7 @@
   --bg-input: #1a1a1a;
   
   --text-main: #e0e0e0;
-  --text-hero: #ffffff;
+  --text-hero: #fffff6;
   --text-dim: #a0a0a0;
   
   --border: #444444;
@@ -20,9 +20,9 @@
 
 /* --- LIGHT MODE OVERRIDES --- */
 .light-mode {
-  --bg-main: #ffffff;
-  --bg-panel: #f3f4f6;
-  --bg-input: #e5e7eb;
+  --bg-main: #f8f0f0;
+  --bg-panel: #e9eaed;
+  --bg-input: #e8ecf5;
   
   --text-main: #111827;
   --text-hero: #111827;
