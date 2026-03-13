@@ -227,10 +227,6 @@ def ask_ai():
     except Exception as e:
         return jsonify({"answer": "I'm thinking too hard and need a break! (Rate Limit Reached). Please try again in 30 seconds."})
 
-# if __name__ == '__main__':
-#     app.run(host='0.0.0.0', port=8000, debug=True)
-    
-# import os
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8000))

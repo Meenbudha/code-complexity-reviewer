@@ -13,10 +13,12 @@ app.use(cors()); // Allow Frontend (Port 3000) to access this
 app.use(express.json());
 
 // 4️⃣ Database Connection
-// Connect to MongoDB (Removed deprecated options)
-mongoose.connect("mongodb://localhost:27017/codemind")
-.then(() => console.log("✅ MongoDB Connected"))
-.catch(err => console.error("❌ MongoDB Connection Error:", err));
+// Check for Render's environment variable first, otherwise use local database
+const dbURI = process.env.MONGO_URI || "mongodb://localhost:27017/codemind";
+
+mongoose.connect(dbURI)
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch(err => console.error("❌ MongoDB Connection Error:", err));
 
 // 5️⃣ Define Schema
 const AnalysisSchema = new mongoose.Schema({
