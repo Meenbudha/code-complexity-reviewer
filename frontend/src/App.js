@@ -7,6 +7,8 @@ import ComplexityGraph from "./components/ComplexityGraph";
 import AiAssistant from "./components/AiAssistant";
 import "./index.css";
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
+
 function App() {
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("c");
@@ -29,7 +31,7 @@ function App() {
 
   // --- 1. Load History from MongoDB on Startup ---
   useEffect(() => {
-    fetch("https://codemind-backend-kuyx.onrender.com/history")
+    fetch(`${BACKEND_URL}/history`)
       .then(res => res.json())
       .then(data => {
         const formattedHistory = data.map(item => ({
@@ -144,7 +146,8 @@ function App() {
 
     // B. Proceed if Valid
     try {
-      const response = await fetch("https://codemind-backend-kuyx.onrender.com/analyze", {
+      // FIX: Changed hardcoded URL to template literal using BACKEND_URL
+      const response = await fetch(`${BACKEND_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language })

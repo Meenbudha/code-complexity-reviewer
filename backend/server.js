@@ -7,7 +7,7 @@ const mongoose = require("mongoose"); // 1. Import Mongoose
 // 2️⃣ App initialization
 const app = express();
 const PORT = process.env.PORT || 5000;
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"; // Frontend calls this port
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8000"; // Frontend calls this port
 
 // 3️⃣ Middlewares
 app.use(cors()); // Allow Frontend (Port 3000) to access this
@@ -35,7 +35,7 @@ const Analysis = mongoose.model("Analysis", AnalysisSchema);
 
 // Health Check
 app.get("/", (req, res) => {
-  res.send("Node.js Backend Gateway is running on Port 5000");
+  res.send(`Node.js Backend Gateway is running on Port ${PORT}`);
 });
 
 // Forward Analysis Request to Python (Port 8000) & Save to DB
@@ -44,10 +44,16 @@ app.post("/analyze", async (req, res) => {
     const { code, language } = req.body;
     
     // Call ML Service
-    const response = await axios.post(`${ML_SERVICE_URL}/analyze`, {
-      code,
-      language
-    });
+    const response = await axios.post(
+      `${ML_SERVICE_URL}/analyze`,
+      { code, language },
+      {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        timeout: 20000 // INCREASED: Gemini AI often takes 5-15 seconds!
+      }
+    );
 
     const resultData = response.data;
 
@@ -63,8 +69,20 @@ app.post("/analyze", async (req, res) => {
     // Send back result + the new DB ID
     res.json({ ...resultData, _id: newAnalysis._id });
 
-  } catch (error) {
+  } 
+  catch (error) {
+
+    if (error.code === "ECONNABORTED") {
+      return res.status(504).json({
+        time: "Timeout",
+        space: "Timeout",
+        warnings: ["ML service took too long to respond."],
+        suggestions: ["Please try again in a few seconds. The AI might be under heavy load."]
+      });
+    }
+
     console.error("Error connecting to ML Service:", error.message);
+
     res.status(500).json({
       time: "Error",
       space: "Error",
@@ -88,17 +106,28 @@ app.get("/history", async (req, res) => {
 // Forward AI Chat Request to Python (Port 8000)
 app.post("/ask-ai", async (req, res) => {
   try {
-    const response = await axios.post(`${ML_SERVICE_URL}/ask-ai`, {
-      code: req.body.code,
-      question: req.body.question
-    });
+    const response = await axios.post(
+      `${ML_SERVICE_URL}/ask-ai`,
+      {
+        code: req.body.code,
+        question: req.body.question
+      },
+      {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        timeout: 20000 // INCREASED: Allow time for Gemini chat response
+      }
+    );
 
     res.json(response.data);
   } catch (error) {
     console.error("Error connecting to AI Service:", error.message);
-    res.status(500).json({ answer: "AI service unavailable. Is the Python backend running?" });
+    res.status(500).json({ answer: "AI service unavailable. Is the Python backend running or did it timeout?" });
   }
 });
+
+console.log("ML SERVICE:", ML_SERVICE_URL);
 
 // 7️⃣ Start Server
 app.listen(PORT, () => {

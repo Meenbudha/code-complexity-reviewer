@@ -21,6 +21,7 @@ if API_KEY:
 else:
     print("⚠️ Warning: GEMINI_API_KEY not found. Running in Offline Mode.")
 
+
 # --- LANGUAGE DETECTION LOGIC ---
 def detect_language(code):
     # Python detection

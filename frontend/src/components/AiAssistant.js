@@ -6,6 +6,9 @@ function AiAssistant({ code }) {
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Updated fallback URL to match App.js fetch URL
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://codemind-backend-kuyx.onrender.com";
+  
   // --- Resizing State ---
   const [chatHeight, setChatHeight] = useState(400);
   const [resizeDirection, setResizeDirection] = useState(null); // 'top' or 'bottom'
@@ -73,7 +76,7 @@ function AiAssistant({ code }) {
     setLoading(true); // Start loading state
 
     try {
-      const res = await fetch("https://codemind-backend-kuyx.onrender.com/ask-ai", {
+      const res = await fetch(`${BACKEND_URL}/ask-ai`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, question: q })
       });
