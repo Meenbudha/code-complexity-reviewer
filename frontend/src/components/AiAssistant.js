@@ -73,7 +73,7 @@ function AiAssistant({ code }) {
     setLoading(true); // Start loading state
 
     try {
-      const res = await fetch("http://localhost:5000/ask-ai", {
+      const res = await fetch("https://codemind-backend-kuyx.onrender.com/ask-ai", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, question: q })
       });

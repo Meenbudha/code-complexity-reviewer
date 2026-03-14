@@ -29,7 +29,7 @@ function App() {
 
   // --- 1. Load History from MongoDB on Startup ---
   useEffect(() => {
-    fetch("http://localhost:5000/history")
+    fetch("https://codemind-backend-kuyx.onrender.com/history")
       .then(res => res.json())
       .then(data => {
         const formattedHistory = data.map(item => ({
@@ -144,7 +144,7 @@ function App() {
 
     // B. Proceed if Valid
     try {
-      const response = await fetch("http://localhost:5000/analyze", {
+      const response = await fetch("https://codemind-backend-kuyx.onrender.com/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language })

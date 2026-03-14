@@ -6,7 +6,8 @@ const mongoose = require("mongoose"); // 1. Import Mongoose
 
 // 2️⃣ App initialization
 const app = express();
-const PORT = 5000; // Frontend calls this port
+const PORT = process.env.PORT || 5000;
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000"; // Frontend calls this port
 
 // 3️⃣ Middlewares
 app.use(cors()); // Allow Frontend (Port 3000) to access this
@@ -43,7 +44,7 @@ app.post("/analyze", async (req, res) => {
     const { code, language } = req.body;
     
     // Call ML Service
-    const response = await axios.post("http://localhost:8000/analyze", {
+    const response = await axios.post(`${ML_SERVICE_URL}/analyze`, {
       code,
       language
     });
@@ -87,7 +88,7 @@ app.get("/history", async (req, res) => {
 // Forward AI Chat Request to Python (Port 8000)
 app.post("/ask-ai", async (req, res) => {
   try {
-    const response = await axios.post("http://localhost:8000/ask-ai", {
+    const response = await axios.post(`${ML_SERVICE_URL}/ask-ai`, {
       code: req.body.code,
       question: req.body.question
     });
