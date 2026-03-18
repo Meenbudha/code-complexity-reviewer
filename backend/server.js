@@ -51,7 +51,7 @@ app.post("/analyze", async (req, res) => {
         headers: {
           "Content-Type": "application/json"
         },
-        timeout: 20000 // INCREASED: Gemini AI often takes 5-15 seconds!
+        timeout: 40000 // INCREASED: Gemini AI often takes 5-15 seconds!
       }
     );
 
