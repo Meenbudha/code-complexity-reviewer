@@ -7,7 +7,7 @@ function AiAssistant({ code }) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Updated fallback URL to match App.js fetch URL
-  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "https://codemind-backend-kuyx.onrender.com";
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
   
   // --- Resizing State ---
   const [chatHeight, setChatHeight] = useState(400);
