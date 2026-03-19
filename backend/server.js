@@ -116,7 +116,7 @@ app.post("/ask-ai", async (req, res) => {
         headers: {
           "Content-Type": "application/json"
         },
-        timeout: 20000 // INCREASED: Allow time for Gemini chat response
+        timeout: 40000 // INCREASED: Allow time for Gemini chat response
       }
     );
 
