@@ -122,8 +122,15 @@ app.post("/ask-ai", async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
+    if (error.code === "ECONNABORTED") {
+      return res.status(504).json({
+        answer: "The AI Assistant took too long to respond. It might be under heavy load. Please try again in a few moments."
+      });
+    }
+
     console.error("Error connecting to AI Service:", error.message);
-    res.status(500).json({ answer: "AI service unavailable. Is the Python backend running or did it timeout?" });
+
+    res.status(500).json({ answer: "The AI Assistant is currently unavailable. Please ensure the Python service is running." });
   }
 });
 

@@ -47,37 +47,6 @@ function App() {
       .catch(err => console.error("Failed to load history:", err));
   }, []);
 
-  // --- 2. Language Validation Logic (IMPROVED) ---
-  const validateLanguage = (code, selectedLanguage) => {
-    // Using stricter boundaries and specific keywords to prevent overlaps
-    const hasPythonKeywords = /\bdef\b\s+\w+\s*\(|\bprint\s*\(|\bif\b.*:|\belif\b.*:|\belse\s*:|\bfor\b.*\bin\b.*:/.test(code);
-    const hasJavaKeywords = /\bpublic\s+class\b|\bprivate\s+class\b|System\.out\.print|\bpublic\s+static\s+void\s+main\b|\bString\s*\[\s*\]|\bimport\s+java\./.test(code);
-    const hasCKeywords = /#include\s*<|\bprintf\s*\(|\bint\s+main\s*\(|\bscanf\s*\(/.test(code);
-
-    if (selectedLanguage === "java") {
-      if (hasJavaKeywords) return { valid: true }; // Prioritize true matches
-      if (hasCKeywords) return { valid: false, detected: "c" };
-      if (hasPythonKeywords) return { valid: false, detected: "python" };
-      return { valid: true }; // Default to true if ambiguous
-    }
-    
-    if (selectedLanguage === "c") {
-      if (hasCKeywords) return { valid: true };
-      if (hasJavaKeywords) return { valid: false, detected: "java" };
-      if (hasPythonKeywords) return { valid: false, detected: "python" };
-      return { valid: true };
-    }
-
-    if (selectedLanguage === "python") {
-      if (hasPythonKeywords) return { valid: true };
-      if (hasJavaKeywords) return { valid: false, detected: "java" };
-      if (hasCKeywords) return { valid: false, detected: "c" };
-      return { valid: true };
-    }
-
-    return { valid: true };
-  };
-
   // --- 3. Resize Logic ---
   const startResizing = (e) => {
     e.preventDefault();
@@ -122,37 +91,27 @@ function App() {
     
     await new Promise(r => setTimeout(r, 600));
 
-    // A. Validate Language First
-    const validation = validateLanguage(code, language);
-
-    if (!validation.valid) {
-      const detectedLang = validation.detected ? validation.detected.charAt(0).toUpperCase() + validation.detected.slice(1) : "another language";
-      const selectedLang = language.charAt(0).toUpperCase() + language.slice(1);
-      
-      const errorResult = {
-        time: "N/A",
-        space: "N/A",
-        warnings: [`⚠️ Language Mismatch: You selected ${selectedLang} but code looks like ${detectedLang}.`],
-        suggestions: [
-          `Please change the dropdown to "${detectedLang}".`,
-          `Or paste valid ${selectedLang} code to proceed.`
-        ]
-      };
-
-      setResult(errorResult);
-      setLoading(false);
-      return; 
-    }
-
-    // B. Proceed if Valid
     try {
-      // FIX: Changed hardcoded URL to template literal using BACKEND_URL
       const response = await fetch(`${BACKEND_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language })
       });
       const data = await response.json();
+
+      // Handle language mismatch error from the backend
+      if (data.error && data.detected) {
+        const errorResult = {
+          time: "N/A",
+          space: "N/A",
+          warnings: [`⚠️ ${data.error}`],
+          suggestions: [
+            `Please change the dropdown to "${data.detected.charAt(0).toUpperCase() + data.detected.slice(1)}".`
+          ]
+        };
+        setResult(errorResult);
+        return;
+      }
       
       setResult(data);
       
@@ -167,7 +126,12 @@ function App() {
       setHistory(prev => [newEntry, ...prev]);
 
     } catch (error) {
-       setResult({ time: "Error", warnings: ["Backend unreachable"], suggestions: [] });
+       setResult({ 
+         time: "Error", 
+         space: "Error",
+         warnings: ["Backend service is unreachable."], 
+         suggestions: ["Please ensure the Node.js server is running."] 
+        });
     } finally {
       setLoading(false);
     }
