@@ -1,19 +1,19 @@
-// 1️⃣ Imports
+// Imports
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const mongoose = require("mongoose"); // 1. Import Mongoose
 
-// 2️⃣ App initialization
+// App initialization
 const app = express();
 const PORT = process.env.PORT || 5000;
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "https://codemind-ml-service.onrender.com"; // Frontend calls this port
 
-// 3️⃣ Middlewares
+//  Middlewares
 app.use(cors()); // Allow Frontend (Port 3000) to access this
 app.use(express.json());
 
-// 4️⃣ Database Connection
+//  Database Connection
 // Check for Render's environment variable first, otherwise use local database
 const dbURI = process.env.MONGO_URI || "mongodb://localhost:27017/codemind";
 
@@ -21,7 +21,7 @@ mongoose.connect(dbURI)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.error("❌ MongoDB Connection Error:", err));
 
-// 5️⃣ Define Schema
+// Define Schema
 const AnalysisSchema = new mongoose.Schema({
   code: String,
   language: String,
@@ -31,7 +31,7 @@ const AnalysisSchema = new mongoose.Schema({
 
 const Analysis = mongoose.model("Analysis", AnalysisSchema);
 
-// 6️⃣ Routes
+//  Routes
 
 // Health Check
 app.get("/", (req, res) => {
@@ -136,7 +136,7 @@ app.post("/ask-ai", async (req, res) => {
 
 console.log("ML SERVICE:", ML_SERVICE_URL);
 
-// 7️⃣ Start Server
+//  Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Node Backend running on http://localhost:${PORT}`);
 });
