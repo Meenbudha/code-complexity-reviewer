@@ -173,15 +173,20 @@ def get_ai_enhancement(code, offline_result):
             model="gemini-3-flash-preview",
             contents=[prompt],
             config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                max_output_tokens=250,
+                max_output_tokens=300,
                 temperature=0.2
             )
         )
-        return json.loads(response.text)
+        # Extract JSON from the response text (handles markdown code fences too)
+        text = response.text.strip()
+        # Strip markdown code fences if present: ```json ... ```
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-z]*\n?", "", text)
+            text = re.sub(r"\n?```$", "", text)
+        return json.loads(text.strip())
     except Exception as e:
         print(f"⚠️ AI Error: {e}")
-        offline_result["suggestions"].append("AI is taking a break (Rate Limit). Showing offline results.")
+        offline_result["suggestions"].append("AI verification unavailable. Showing offline results.")
         return offline_result
 
 # --- 3. ROUTES ---
@@ -191,31 +196,41 @@ def home():
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    data = request.json
-    code = data.get('code', '')
-    requested_language = data.get('language', '').lower() # Get language from frontend
+    try:
+        data = request.json
+        code = data.get('code', '')
+        requested_language = data.get('language', '').lower()
 
-    if not code: 
-        return jsonify({"time": "N/A"})
-    
-    # --- LANGUAGE DETECTION & VALIDATION ---
-    detected_language = detect_language(code)
-    
-    # If frontend sent a language, validate it
-    if requested_language and detected_language != "unknown":
-        if requested_language != detected_language:
-             return jsonify({
-                "error": f"Language Mismatch: You selected {requested_language.capitalize()} but the code looks like {detected_language.capitalize()}.",
-                "detected": detected_language
-            })
+        if not code:
+            return jsonify({"time": "N/A"})
 
-    # 1. Run Offline Analysis
-    result = analyze_offline(code)
-    
-    # 2. Enhance with AI
-    final_result = get_ai_enhancement(code, result)
-    
-    return jsonify(final_result)
+        # --- LANGUAGE DETECTION & VALIDATION ---
+        detected_language = detect_language(code)
+
+        if requested_language and detected_language != "unknown":
+            if requested_language != detected_language:
+                return jsonify({
+                    "error": f"Language Mismatch: You selected {requested_language.capitalize()} but the code looks like {detected_language.capitalize()}.",
+                    "detected": detected_language
+                })
+
+        # 1. Run Offline Analysis (always works, no internet needed)
+        result = analyze_offline(code)
+
+        # 2. Try to enhance with AI (gracefully falls back if rate limited)
+        final_result = get_ai_enhancement(code, result)
+
+        return jsonify(final_result)
+
+    except Exception as e:
+        print(f"⚠️ Analyze route error: {e}")
+        # Always return something useful instead of crashing
+        return jsonify({
+            "time": "Analysis Error",
+            "space": "Analysis Error",
+            "warnings": ["An internal error occurred during analysis."],
+            "suggestions": ["Please try again in a few seconds."]
+        }), 200
 
 @app.route('/ask-ai', methods=['POST'])
 def ask_ai():
