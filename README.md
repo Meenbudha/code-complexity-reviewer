@@ -1,4 +1,4 @@
-🚀 Code Complexity Reviewer: GitHub Setup Guide
+Code Complexity Reviewer: GitHub Setup Guide
 
 Follow these steps to initialize your project with Git and push it to GitHub.
 
@@ -67,7 +67,7 @@ git remote add origin [https://github.com/YOUR-USERNAME/code-complexity-reviewer
 git push -u origin main
 
 
-📋 Summary Table of Commands
+Summary Table of Commands
 
 Action                  Command
 
