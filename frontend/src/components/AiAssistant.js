@@ -116,9 +116,28 @@ function AiAssistant({ code }) {
 
       {/* Header */}
       <div onClick={() => setIsExpanded(!isExpanded)} style={{ padding: "15px 30px", backgroundColor: "var(--bg-panel)", borderBottom: isExpanded ? "1px solid var(--border)" : "none", display: "flex", justifyContent: "space-between", cursor: "pointer" }}>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <span style={{ fontSize: "1.4rem" }}>🤖</span>
-          <span style={{ fontWeight: "bold", color: "var(--text-main)" }}>AI Assistant</span>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "36px", height: "36px", borderRadius: "10px",
+            background: "linear-gradient(135deg, rgba(6,182,212,0.15) 0%, rgba(139,92,246,0.15) 100%)",
+            boxShadow: "0 0 15px rgba(6,182,212,0.2)"
+          }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="aiGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="var(--primary)" />
+                  <stop offset="100%" stopColor="var(--secondary)" />
+                </linearGradient>
+              </defs>
+              <polygon points="12 2 21 7 21 17 12 22 3 17 3 7" stroke="url(#aiGradient)" strokeWidth="2" strokeLinejoin="round" />
+              <circle cx="12" cy="12" r="3" fill="url(#aiGradient)" />
+              <path d="M12 2v6m0 8v6M3 7l5 3m8 4l5 3M3 17l5-3m8-4l5-3" stroke="url(#aiGradient)" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+          <span style={{ fontWeight: "700", fontSize: "1.1rem", color: "var(--text-main)", letterSpacing: "0.5px" }}>
+            AI Assistant
+          </span>
         </div>
         <span style={{ color: "var(--text-dim)" }}>{isExpanded ? "▲" : "▼"}</span>
       </div>
@@ -142,8 +161,8 @@ function AiAssistant({ code }) {
               borderTopRightRadius: msg.role === 'user' ? "4px" : "20px",
               borderTopLeftRadius: msg.role === 'ai' ? "4px" : "20px",
               color: "var(--text-main)",
-              fontSize: "1.1rem",
-              lineHeight: "1.6",
+              fontSize: "0.95rem",
+              lineHeight: "1.5",
               whiteSpace: "pre-wrap"
             }}>{msg.text}</div>
           </div>
@@ -164,7 +183,7 @@ function AiAssistant({ code }) {
               alignItems: "center",
               gap: "10px"
             }}>
-              <span className="loader-text" style={{ fontSize: "1rem" }}>Thinking...</span>
+              <span className="loader-text" style={{ fontSize: "0.95rem" }}>Thinking...</span>
             </div>
           </div>
         )}
@@ -192,7 +211,7 @@ function AiAssistant({ code }) {
             backgroundColor: "var(--bg-main)", 
             color: "var(--text-main)", 
             outline: "none",
-            fontSize: "1rem",
+            fontSize: "0.95rem",
             opacity: loading ? 0.7 : 1
           }} 
         />

@@ -1,39 +1,44 @@
 :root {
-  /* --- COLORS (Gray Dark Theme) --- */
-  --primary: #2cccc3;
-  --secondary: #5626c4;
-  --warning: #facd3d;
-  --error: #e60576;
+  /* --- COLORS (Premium Modern Dark Theme) --- */
+  --primary: #06b6d4;
+  --secondary: #8b5cf6;
+  --warning: #f59e0b;
+  --error: #ef4444;
   
-  --bg-main: #212121;
-  --bg-panel: #2f2f2f;
-  --bg-input: #1a1a1a;
+  --bg-main: #0f172a;
+  --bg-panel: #1e293b;
+  --bg-input: #0b1120;
   
-  --text-main: #e0e0e0;
-  --text-hero: #fffff6;
-  --text-dim: #a0a0a0;
+  --text-main: #f8fafc;
+  --text-hero: #ffffff;
+  --text-dim: #94a3b8;
   
-  --border: #444444;
-  --shadow: rgba(0, 0, 0, 0.5);
-  --scroll-thumb: #555;
+  --border: #334155;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --scroll-thumb: #475569;
 }
 
 /* --- LIGHT MODE OVERRIDES --- */
 .light-mode {
-  --bg-main: #f8f0f0;
-  --bg-panel: #e9eaed;
-  --bg-input: #e8ecf5;
+  --primary: #0891b2;
+  --bg-main: #f8fafc;
+  --bg-panel: #ffffff;
+  --bg-input: #f1f5f9;
   
-  --text-main: #111827;
-  --text-hero: #111827;
-  --text-dim: #6b7280;
+  --text-main: #1e293b;
+  --text-hero: #0f172a;
+  --text-dim: #64748b;
   
-  --border: #e5e7eb;
-  --shadow: rgba(0, 0, 0, 0.1);
-  --scroll-thumb: #d1d5db;
+  --border: #e2e8f0;
+  --shadow: rgba(0, 0, 0, 0.05);
+  --scroll-thumb: #cbd5e1;
 }
 
 * { box-sizing: border-box; }
+
+body, div, header, textarea, select, button, input {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
 
 body {
   margin: 0;
@@ -49,7 +54,7 @@ body {
 .app-shell {
   display: flex;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
   overflow: hidden;
   background-color: var(--bg-main);
   color: var(--text-main);
@@ -94,7 +99,7 @@ body {
   width: 70%;
   max-width: 900px;
   margin: 0 auto;
-  height: 600px;
+  height: 100%;
 }
 .editor-wrapper.analyzed {
   width: 100%;

@@ -172,7 +172,11 @@ def get_ai_enhancement(code, offline_result):
         response = client.models.generate_content(
             model="gemini-3-flash-preview",
             contents=[prompt],
-            config=types.GenerateContentConfig(response_mime_type="application/json")
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                max_output_tokens=250,
+                temperature=0.2
+            )
         )
         return json.loads(response.text)
     except Exception as e:

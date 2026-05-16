@@ -28,7 +28,7 @@ function CodeEditor({ code, setCode }) {
           resize: "none",
           padding: "20px",
           fontFamily: "'Fira Code', monospace",
-          fontSize: "18px",
+          fontSize: "13px",
           outline: "none"
         }}
       />

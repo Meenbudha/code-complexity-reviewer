@@ -25,7 +25,7 @@ function App() {
   
   // Layout Logic
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
-  const [topSectionHeight, setTopSectionHeight] = useState(600);
+  const [topSectionHeight, setTopSectionHeight] = useState(window.innerHeight < 800 ? window.innerHeight * 0.6 : 600);
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef(null);
 
@@ -88,8 +88,6 @@ function App() {
     setResult(null); 
     setLoading(true); 
     setHasAnalyzed(true); 
-    
-    await new Promise(r => setTimeout(r, 600));
 
     try {
       const response = await fetch(`${BACKEND_URL}/analyze`, {
@@ -173,7 +171,7 @@ function App() {
         <Header darkMode={darkMode} setDarkMode={setDarkMode} />
 
         <div className="scrollable-workspace">
-          <div style={{ width: "100%", maxWidth: "1600px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
+          <div style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
             
             <div className={`welcome-hero ${hasAnalyzed ? 'hidden' : ''}`}>
               <h1 style={{ fontSize: "2.5rem", marginBottom: "10px", color: "var(--text-hero)" }}>
@@ -189,6 +187,7 @@ function App() {
               style={{ 
                 height: `${topSectionHeight}px`, 
                 display: "flex", 
+                gap: hasAnalyzed ? "20px" : "0",
                 justifyContent: hasAnalyzed ? "flex-start" : "center", 
                 transition: isResizing ? "none" : "height 0.2s ease",
                 marginBottom: "5px"
@@ -198,40 +197,51 @@ function App() {
                 className={`editor-wrapper ${hasAnalyzed ? 'analyzed' : 'initial'}`} 
                 style={{ width: hasAnalyzed ? "auto" : undefined, flex: hasAnalyzed ? 1 : undefined, minWidth: 0, height: "100%" }}
               >
-                <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", gap: "10px", height: "42px" }}>
-                   <label style={{ color: "var(--text-dim)" }}>Language:</label>
-                   <select 
-                      value={language} 
-                      onChange={(e) => setLanguage(e.target.value)}
-                      style={{ backgroundColor: "var(--bg-panel)", color: "var(--text-main)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: "4px", outline: "none" }}
-                    >
-                      <option value="c">C Language</option>
-                      <option value="java">Java</option>
-                      <option value="python">Python</option>
-                    </select>
-                </div>
-                <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", boxShadow: "0 0 20px var(--shadow)", backgroundColor: "var(--bg-panel)" }}>
-                   <CodeEditor code={code} setCode={setCode} darkMode={darkMode} />
-                </div>
-                <div style={{ paddingTop: "15px", display: "flex", justifyContent: "flex-end" }}>
+                <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
+                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                     <label style={{ color: "var(--text-dim)" }}>Language:</label>
+                     <select 
+                        value={language} 
+                        onChange={(e) => setLanguage(e.target.value)}
+                        style={{ backgroundColor: "var(--bg-panel)", color: "var(--text-main)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: "4px", outline: "none" }}
+                      >
+                        <option value="c">C Language</option>
+                        <option value="java">Java</option>
+                        <option value="python">Python</option>
+                      </select>
+                   </div>
                    <button 
                       onClick={analyzeCode}
                       disabled={loading}
-                      style={{ backgroundColor: loading ? "#444" : "var(--primary)", color: loading ? "#888" : "#000", border: "none", padding: "10px 30px", borderRadius: "6px", fontWeight: "bold", cursor: loading ? "not-allowed" : "pointer" }}
+                      style={{ 
+                        backgroundColor: loading ? "var(--border)" : "var(--primary)", 
+                        color: loading ? "var(--text-dim)" : "#000", 
+                        border: "none", 
+                        padding: "8px 24px", 
+                        borderRadius: "6px", 
+                        fontWeight: "bold", 
+                        cursor: loading ? "not-allowed" : "pointer",
+                        transition: "all 0.2s",
+                        boxShadow: loading ? "none" : "0 4px 10px rgba(6,182,212,0.3)"
+                      }}
                     >
                       {loading ? "PROCESSING..." : "ANALYZE CODE"}
                     </button>
                 </div>
+                <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", boxShadow: "0 0 20px var(--shadow)", backgroundColor: "var(--bg-panel)", display: "flex", flexDirection: "column" }}>
+                   <CodeEditor code={code} setCode={setCode} darkMode={darkMode} />
+                </div>
               </div>
 
               {hasAnalyzed && (
-                <div className="analysis-panel" style={{ width: "420px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none", paddingLeft: "20px" }}>
-                   <div style={{ paddingBottom: "10px", height: "42px" }}></div>
+                <div className="analysis-panel" style={{ width: "370px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none" }}>
+                   <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
+                       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                         <label style={{ color: "var(--text-dim)", fontWeight: "bold" }}>Report:</label>
+                         <span style={{ color: "var(--primary)", fontWeight: "700", letterSpacing: "1px" }}>Complexity Insights</span>
+                       </div>
+                   </div>
                    <div style={{ flex: 1, overflowY: "auto", backgroundColor: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", boxShadow: "0 0 20px var(--shadow)" }}>
-                      <div style={{ paddingBottom: "10px", marginBottom: "20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <h3 style={{ margin: "0", color: "var(--primary)", letterSpacing: "1px", fontSize: "1.0rem", fontWeight: "700" }}>ANALYSIS REPORT</h3>
-                          <span style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>AI & Metrics</span>
-                      </div>
                       
                       {loading ? (
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "300px", color: "var(--text-dim)" }}>
@@ -247,7 +257,6 @@ function App() {
                         )
                       )}
                    </div>
-                   <div style={{ height: "55px" }}></div>
                 </div>
               )}
             </div>
@@ -262,7 +271,7 @@ function App() {
             </div>
 
             <div style={{ padding: "20px 0 40px 0", display: "flex", justifyContent: "center" }}>
-              <div style={{ width: hasAnalyzed ? "100%" : "70%", maxWidth: hasAnalyzed ? "none" : "900px", transition: "width 0.5s ease" }}>
+              <div style={{ width: hasAnalyzed ? "100%" : "70%", maxWidth: hasAnalyzed ? "1000px" : "900px", transition: "width 0.5s ease" }}>
                 <AiAssistant code={code} />
               </div>
             </div>
