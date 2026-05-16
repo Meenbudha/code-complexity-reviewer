@@ -15,7 +15,7 @@ app.use(express.json());
 
 //  Database Connection
 // Check for Render's environment variable first, otherwise use local database
-const dbURI = process.env.MONGO_URI || "mongodb://localhost:27017/codemind";
+const dbURI = process.env.MONGO_URL || "mongodb://localhost:27017/codemind";
 
 mongoose.connect(dbURI)
   .then(() => console.log("✅ MongoDB Connected"))
