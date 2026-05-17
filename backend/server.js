@@ -1,4 +1,5 @@
 // Imports
+require("dotenv").config(); // Load .env file
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -7,7 +8,7 @@ const mongoose = require("mongoose"); // 1. Import Mongoose
 // App initialization
 const app = express();
 const PORT = process.env.PORT || 5000;
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "https://codemind-ml-service.onrender.com"; // Frontend calls this port
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 //  Middlewares
 app.use(cors()); // Allow Frontend (Port 3000) to access this

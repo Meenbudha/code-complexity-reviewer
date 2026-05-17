@@ -84,6 +84,10 @@ function App() {
 
   // --- 4. Analysis Logic ---
   const analyzeCode = async () => {
+    if (!code.trim()) {
+      alert("Please paste some code before analyzing.");
+      return;
+    }
     setRefreshKey((prev) => prev + 1);
     setResult(null); 
     setLoading(true); 

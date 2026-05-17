@@ -10,6 +10,7 @@ function ComplexityGraph({ complexity, darkMode }) {
     if (!comp) return nValues.map(() => 0);
     if (comp.includes("O(1)")) return nValues.map(() => 5);
     if (comp.includes("log")) return nValues.map(n => Math.log2(n + 1) * 5);
+    if (comp.includes("2^n") || comp.includes("^n")) return nValues.map(n => Math.min(Math.pow(2, n / 5), 250));
     if (comp.includes("n^2")) return nValues.map(n => (n * n) / 10);
     if (comp.includes("n")) return nValues.map(n => n);
     return nValues.map(n => n);

@@ -82,7 +82,8 @@ function AiAssistant({ code }) {
       });
       const data = await res.json();
       setHistory([...newHistory, { role: 'ai', text: data.answer }]);
-    } catch {
+    } catch (err) {
+      console.error("AI request failed:", err);
       setHistory([...newHistory, { role: 'ai', text: "Error: AI Service Unavailable" }]);
     } finally { setLoading(false); }
   };
