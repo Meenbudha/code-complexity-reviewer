@@ -91,12 +91,18 @@ def analyze_offline(code):
     is_logarithmic = False
     is_recursive = False
     has_dynamic_allocation = False
+    has_hashmap = False
+    has_sorting = False
+    has_string_concat_in_loop = False
+    in_loop = False
 
-    func_match = re.search(r'(?:int|void|def|public|private)\s+(\w+)\s*[\(\{]', code)
+    # --- Recursion: stricter — function must call itself in its own body ---
+    func_match = re.search(
+        r'\b(?:def|int|void|public|private|protected)\s+(\w+)\s*\(', code)
     if func_match:
         func_name = func_match.group(1)
-        calls = len(re.findall(rf'\b{func_name}\s*\(', code))
-        if calls > 1:
+        body = code[func_match.end():]           # skip the definition line
+        if re.search(rf'\b{func_name}\s*\(', body):
             is_recursive = True
 
     has_braces = '{' in code and '}' in code
@@ -105,61 +111,94 @@ def analyze_offline(code):
         stripped = line.strip()
         if not stripped or stripped.startswith('//') or stripped.startswith('#'):
             continue
-        if re.search(r'\b(for|while)\b', stripped):
+
+        # --- Loop detection ---
+        is_loop_line = bool(re.search(r'\b(for|while)\b', stripped))
+        if is_loop_line:
             loop_count += 1
+            in_loop = True
             if has_braces:
-                if '{' in stripped or not stripped.endswith(';'):
+                if '{' in stripped:
                     current_nesting += 1
             else:
                 current_nesting += 1
             max_nesting = max(max_nesting, current_nesting)
-            if re.search(r'(\*=|/=|>>|<<)', stripped):
+            # Logarithmic: halving or doubling in loop condition / body
+            if re.search(r'(\*=\s*2|/=\s*2|>>=|<<=|//\s*2)', stripped):
                 is_logarithmic = True
-        if current_nesting > 0 and re.search(r'(\*=|/=|>>|<<)\s*[2-9]', stripped):
-            is_logarithmic = True
-        if re.search(r'\bnew\s+\w+\s*\[|malloc\b|calloc\b|\b[A-Z]\w*List\b', stripped):
-            has_dynamic_allocation = True
-        if re.search(r'\[.*\]\s*\*', stripped) or re.search(r'\blist\(', stripped):
-            has_dynamic_allocation = True
-        if has_braces:
-            if '}' in stripped:
-                current_nesting = max(0, current_nesting - stripped.count('}'))
 
+        if current_nesting > 0 and re.search(r'(\*=|/=|>>=|<<=)\s*[2-9]', stripped):
+            is_logarithmic = True
+
+        # --- Sorting → O(n log n) ---
+        if re.search(r'\b(sorted|sort|Arrays\.sort|Collections\.sort|qsort)\b', stripped):
+            has_sorting = True
+
+        # --- Dynamic memory allocation ---
+        if re.search(r'\bnew\s+\w+\s*\[|malloc\b|calloc\b', stripped):
+            has_dynamic_allocation = True
+        if re.search(r'\b(list|List|ArrayList|vector|deque|queue|stack)\b.*[\(\[]', stripped):
+            has_dynamic_allocation = True
+
+        # --- HashMap / Set → O(n) space, O(1) lookup ---
+        if re.search(r'\b(dict|HashMap|HashSet|set|Map|defaultdict|Counter)\b', stripped):
+            has_hashmap = True
+
+        # --- String concat inside loop → hidden O(n²) ---
+        if in_loop and re.search(r'\+=\s*["\']|str\s*\+=|\bconcat\b', stripped):
+            has_string_concat_in_loop = True
+
+        # --- Close brace → decrease nesting ---
+        if has_braces and '}' in stripped:
+            current_nesting = max(0, current_nesting - stripped.count('}'))
+            if current_nesting == 0:
+                in_loop = False
+
+    # ── TIME COMPLEXITY ───────────────────────────────────────────────
     if is_recursive:
-        if re.search(r'\b\w+\s*\(.*\)\s*[\+\-\*\/]\s*\b\w+\s*\(', code):
+        double_call = re.search(r'\b\w+\s*\(.*\)\s*[\+\-\*\/]\s*\b\w+\s*\(', code)
+        if double_call:
             time_complexity = "O(2^n)"
-            suggestions.append("Exponential recursion detected. Consider Dynamic Programming.")
+            warnings.append("Exponential Recursion: Two recursive calls per frame — use memoization or DP to optimize.")
         else:
             time_complexity = "O(n)"
-            suggestions.append("Recursive solution. Ensure base case prevents StackOverflow.")
-    else:
-        if max_nesting == 0:
-            time_complexity = "O(1)"
-        elif max_nesting == 1:
-            time_complexity = "O(log n)" if is_logarithmic else "O(n)"
-        elif max_nesting == 2:
-            time_complexity = "O(n log n)" if is_logarithmic else "O(n^2)"
-        elif max_nesting >= 3:
-            time_complexity = f"O(n^{max_nesting})"
-            warnings.append(f"High complexity detected (O(n^{max_nesting})).")
+            suggestions.append("Recursion Depth: Ensure a clear base case exists to prevent stack overflow.")
+    elif has_sorting and max_nesting <= 1:
+        time_complexity = "O(n log n)"
+        suggestions.append("Built-in Sort: Using optimized O(n log n) sort — best possible for comparison-based sorting.")
+    elif max_nesting == 0:
+        time_complexity = "O(1)"
+    elif max_nesting == 1:
+        time_complexity = "O(log n)" if is_logarithmic else "O(n)"
+    elif max_nesting == 2:
+        time_complexity = "O(n log n)" if is_logarithmic else "O(n²)"
+    elif max_nesting >= 3:
+        time_complexity = f"O(n^{max_nesting})"
+        warnings.append(f"Deep Nesting: {max_nesting} nested loops create O(n^{max_nesting}) complexity — consider restructuring with helper functions.")
 
-    if has_dynamic_allocation:
+    # ── SPACE COMPLEXITY ──────────────────────────────────────────────
+    if has_hashmap:
         space_complexity = "O(n)"
-        if max_nesting >= 2:
-            space_complexity = "O(n^2)"
+        suggestions.append("HashMap Tradeoff: Using O(n) extra memory enables O(1) lookups — an efficient space/time tradeoff.")
+    elif has_dynamic_allocation:
+        space_complexity = "O(n²)" if max_nesting >= 2 else "O(n)"
     elif is_recursive:
-        space_complexity = "O(n) (Stack)"
+        space_complexity = "O(n)"
+        suggestions.append("Stack Space: Each recursive call adds a frame — space grows linearly with input size.")
     else:
         space_complexity = "O(1)"
 
-    if "n^2" in time_complexity:
-        suggestions.append("Nested loops detected. Try using HashMaps to optimize.")
-    if is_logarithmic:
-        suggestions.append("Logarithmic efficiency detected. Good job!")
+    # ── ADDITIONAL WARNINGS & TIPS ────────────────────────────────────
+    if ("n²" in time_complexity or "n^2" in time_complexity) and not has_hashmap:
+        suggestions.append("Optimization Tip: Replace the inner loop lookup with a HashSet or dict to reduce time to O(n).")
+    if has_string_concat_in_loop:
+        warnings.append("String Concat in Loop: Using '+=' on strings inside a loop is O(n²) — use a list and join() instead.")
+    if is_logarithmic and not is_recursive:
+        suggestions.append("Divide & Conquer Pattern: Halving/doubling detected — this is an efficient logarithmic algorithm.")
     if loop_count == 0 and not is_recursive:
-        suggestions.append("Constant time complexity. Very efficient.")
-    if len(code) < 30:
-        warnings.append("Code snippet is very short.")
+        suggestions.append("Constant Time: No loops or recursion found — this is an optimal O(1) solution.")
+    if len(code.strip()) < 30:
+        warnings.append("Short Snippet: Code is very short — complexity analysis may be incomplete or inaccurate.")
 
     return {
         "time": time_complexity,
