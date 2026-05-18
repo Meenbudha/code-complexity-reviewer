@@ -2,7 +2,7 @@ name: 🔥 Keep Services Alive
 
 on:
   schedule:
-    # Ping every 10 minutes — prevents Render free tier cold starts (spin-down after 15min)
+    # Ping every 10 minutes — prevents Render free tier cold starts
     - cron: "*/10 * * * *"
 
   # Allow manual trigger from GitHub Actions tab
@@ -16,34 +16,46 @@ jobs:
     steps:
       - name: 🌐 Ping Frontend
         run: |
-          STATUS=$(curl --silent --max-time 30 -o /dev/null -w "%{http_code}" \
-            "https://codemind-frontend.onrender.com")
-          echo "Frontend → HTTP $STATUS"
+          URL="https://codemind-frontend.onrender.com"
+          echo "Pinging Frontend: $URL"
+          STATUS=$(curl --silent --max-time 60 -o /dev/null -w "%{http_code}" "$URL" || echo "timeout")
+          echo "Frontend → $STATUS"
+          echo "✅ Ping sent (service waking up if it was asleep)"
 
       - name: 🟡 Ping Backend
         env:
           BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL }}
         run: |
-          URL="${BACKEND_URL:-https://your-backend.onrender.com}"
-          STATUS=$(curl --silent --max-time 30 -o /dev/null -w "%{http_code}" "$URL")
-          echo "Backend → HTTP $STATUS"
-          # Secret: RENDER_BACKEND_URL
-          # Value: https://your-backend-service-name.onrender.com
+          if [ -z "$BACKEND_URL" ]; then
+            echo "⚠️  RENDER_BACKEND_URL secret not set — skipping."
+            echo "    Add it: GitHub → Settings → Secrets → Actions → New secret"
+            echo "    Name: RENDER_BACKEND_URL | Value: https://your-backend.onrender.com"
+          else
+            echo "Pinging Backend: $BACKEND_URL"
+            STATUS=$(curl --silent --max-time 60 -o /dev/null -w "%{http_code}" "$BACKEND_URL" || echo "timeout/waking")
+            echo "Backend → $STATUS"
+            echo "✅ Ping sent"
+          fi
 
       - name: 🤖 Ping ML Service
         env:
           ML_URL: ${{ secrets.RENDER_ML_URL }}
         run: |
-          URL="${ML_URL:-https://your-ml-service.onrender.com}"
-          STATUS=$(curl --silent --max-time 30 -o /dev/null -w "%{http_code}" "$URL")
-          echo "ML Service → HTTP $STATUS"
-          # Secret: RENDER_ML_URL
-          # Value: https://your-ml-service-name.onrender.com
+          if [ -z "$ML_URL" ]; then
+            echo "⚠️  RENDER_ML_URL secret not set — skipping."
+            echo "    Add it: GitHub → Settings → Secrets → Actions → New secret"
+            echo "    Name: RENDER_ML_URL | Value: https://your-ml-service.onrender.com"
+          else
+            echo "Pinging ML Service: $ML_URL"
+            STATUS=$(curl --silent --max-time 60 -o /dev/null -w "%{http_code}" "$ML_URL" || echo "timeout/waking")
+            echo "ML Service → $STATUS"
+            echo "✅ Ping sent"
+          fi
 
-      - name: ✅ Ping Summary
+      - name: ✅ Summary
         run: |
           echo "========================================"
           echo "  Keep-Alive Ping Complete"
           echo "  Time: $(date -u)"
-          echo "  All 3 services pinged — cold starts prevented"
+          echo "  Services pinged — cold starts prevented"
           echo "========================================"
