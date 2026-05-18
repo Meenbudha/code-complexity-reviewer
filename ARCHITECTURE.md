@@ -16,6 +16,8 @@
 8. [How to Run Locally](#8-how-to-run-locally)
 9. [Unit Tests](#9-unit-tests)
 10. [CI/CD Pipeline (GitHub Actions)](#10-cicd-pipeline-github-actions)
+11. [Deployment on Render](#11-deployment-on-render)
+12. [Cold Start & Performance](#12-cold-start--performance)
 
 ---
 
@@ -818,3 +820,214 @@ This is a common mistake when setting up GitHub Actions for the first time.
 2. Re-added sensitive keys under the **Secrets** tab
 3. Kept only `AWS_REGION` in Variables (safe — not sensitive)
 4. Re-ran the pipeline → all deploy hooks fired correctly ✅
+
+---
+
+## 11. Deployment on Render
+
+All three services are deployed on **[Render](https://render.com)** (free tier). Each service is a separate Render **Web Service** connected to the same GitHub repository.
+
+---
+
+### 11.1 Live URLs
+
+| Service | URL | Type |
+|---|---|---|
+| **Frontend** | https://codemind-frontend.onrender.com | Static Site / Web Service |
+| **Backend** | *(your-backend-name).onrender.com* | Web Service (Node.js) |
+| **ML Service** | *(your-ml-service-name).onrender.com* | Web Service (Python) |
+
+---
+
+### 11.2 Render Service Configuration
+
+#### Frontend Service
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `frontend` |
+| **Build Command** | `npm install --legacy-peer-deps && npm run build` |
+| **Publish Directory** | `build` |
+| **Service Type** | Static Site |
+
+**Environment Variables (set in Render → frontend → Environment):**
+
+| Variable | Value |
+|---|---|
+| `REACT_APP_BACKEND_URL` | `https://your-backend.onrender.com` |
+| `REACT_APP_ML_URL` | `https://your-ml-service.onrender.com` |
+
+> ⚠️ These must be set **before** building, because React bakes `REACT_APP_*` vars into the static bundle at build time — they are NOT runtime env vars.
+
+#### Backend Service
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `backend` |
+| **Build Command** | `npm install` |
+| **Start Command** | `node server.js` |
+| **Service Type** | Web Service |
+
+**Environment Variables:**
+
+| Variable | Value |
+|---|---|
+| `PORT` | `5000` (or leave blank — Render assigns) |
+| `MONGO_URL` | MongoDB Atlas connection string |
+| `ML_SERVICE_URL` | `https://your-ml-service.onrender.com` |
+
+#### ML Service
+
+| Setting | Value |
+|---|---|
+| **Root Directory** | `ml-service` |
+| **Build Command** | `pip install -r requirements.txt` |
+| **Start Command** | `gunicorn app:app --workers 2 --timeout 60 --bind 0.0.0.0:$PORT` |
+| **Service Type** | Web Service |
+
+**Environment Variables:**
+
+| Variable | Value |
+|---|---|
+| `PORT` | Assigned by Render |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
+| `AWS_REGION` | `us-east-1` |
+| `FLASK_ENV` | `production` |
+
+---
+
+### 11.3 Render Deploy Hooks
+
+Each service exposes a **Deploy Hook URL** (Render → service → Settings → Deploy Hook). These are stored as GitHub Secrets and triggered by the `deploy.yml` CI/CD workflow after all CI checks pass.
+
+| GitHub Secret | Purpose |
+|---|---|
+| `RENDER_DEPLOY_HOOK_FRONTEND` | Triggers frontend rebuild on Render |
+| `RENDER_DEPLOY_HOOK_BACKEND` | Triggers backend rebuild on Render |
+| `RENDER_DEPLOY_HOOK_ML` | Triggers ML service rebuild on Render |
+
+**Flow:** `git push origin main` → GitHub Actions CI → all tests pass → `curl` deploy hooks → Render rebuilds all 3 services.
+
+---
+
+### 11.4 GitHub Secrets Summary (Full)
+
+All secrets stored at: **GitHub repo → Settings → Secrets and variables → Actions → Secrets tab**
+
+| Secret Name | Purpose | Used In |
+|---|---|---|
+| `GEMINI_API_KEY` | Primary AI provider | `deploy.yml` |
+| `AWS_ACCESS_KEY_ID` | AWS Bedrock fallback | `deploy.yml` |
+| `AWS_SECRET_ACCESS_KEY` | AWS Bedrock fallback | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_FRONTEND` | Render webhook | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_BACKEND` | Render webhook | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_ML` | Render webhook | `deploy.yml` |
+| `RENDER_BACKEND_URL` | Keep-alive ping | `keep-alive.yml` |
+| `RENDER_ML_URL` | Keep-alive ping | `keep-alive.yml` |
+
+**GitHub Variables (non-sensitive):**
+
+| Variable Name | Value |
+|---|---|
+| `AWS_REGION` | `us-east-1` |
+
+---
+
+## 12. Cold Start & Performance
+
+### 12.1 The Problem — Render Free Tier Spin-Down
+
+Render's free tier **spins down every service after 15 minutes of inactivity**. When a new request arrives, the service must "wake up" — this takes **30–90 seconds** per service.
+
+**Symptom:** Opening `codemind-frontend.onrender.com` shows a working UI, but all API calls to the backend and ML service silently fail because those services are still waking up.
+
+**Old workaround (manual, broken):** Users had to manually open the backend and ML service URLs first to wake them up before using the frontend.
+
+---
+
+### 12.2 Solution A — WarmupScreen Component
+
+**File:** `frontend/src/components/WarmupScreen.js`
+
+A full-screen splash that is shown **before the main app renders**. It simultaneously pings the backend and ML service until both respond, then auto-launches the app.
+
+```
+User opens codemind-frontend.onrender.com
+            │
+            ▼
+  ┌────────────────────────────┐
+  │   WarmupScreen renders      │
+  │   • Pings Backend URL       │
+  │   • Pings ML Service URL    │
+  │   • Shows spinner per svc   │
+  │   • Progress bar + timer    │
+  └────────────────────────────┘
+            │ Both services respond HTTP 200
+            ▼
+  ┌────────────────────────────┐
+  │   Main App launches ✅       │
+  │   All features functional   │
+  └────────────────────────────┘
+```
+
+**Key behaviour:**
+- Retries ping every **4 seconds** until both services respond
+- Times out after **90 seconds** and shows a retry button
+- Passes `onReady` callback to App.js via `useCallback` — memoized to prevent re-renders
+- Uses `AbortController` to cancel in-flight fetch requests on cleanup
+
+**Env vars required on Render frontend service:**
+```
+REACT_APP_BACKEND_URL=https://your-backend.onrender.com
+REACT_APP_ML_URL=https://your-ml-service.onrender.com
+```
+
+---
+
+### 12.3 Solution B — Keep-Alive Cron Job
+
+**File:** `.github/workflows/keep-alive.yml`
+
+A GitHub Actions workflow that runs on a **cron schedule every 10 minutes**, pinging all 3 Render services to prevent them from ever reaching the 15-minute spin-down threshold.
+
+```yaml
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # Every 10 minutes, 24/7
+  workflow_dispatch:          # Also triggerable manually
+```
+
+**Why this works:** Render only spins down after **15 minutes** of no traffic. Pinging every 10 minutes keeps the inactivity timer reset permanently.
+
+**Services pinged:**
+
+| Service | URL Source | Behaviour on missing secret |
+|---|---|---|
+| Frontend | Hardcoded in yml | Always pinged |
+| Backend | `RENDER_BACKEND_URL` secret | Skips gracefully with warning |
+| ML Service | `RENDER_ML_URL` secret | Skips gracefully with warning |
+
+**Failure handling:** `curl` uses `|| echo "timeout/waking"` fallback — a slow or waking service does **not** fail the GitHub Actions job.
+
+---
+
+### 12.4 Cold Start Timeline (Before vs After)
+
+| Scenario | Before fix | After fix |
+|---|---|---|
+| First visit after inactivity | ❌ API calls fail silently | ✅ WarmupScreen handles it |
+| Services wake-up visibility | ❌ Blank / broken UI | ✅ Status shown per service |
+| Services staying awake | ❌ Manual URL opening needed | ✅ Auto-pinged every 10 min |
+| Time to usable app | 30–90s (invisible) | 30–90s (visible progress) |
+| After keep-alive is running | N/A | ~instant (never sleeps) |
+
+---
+
+### 12.5 Performance Notes
+
+- **MongoDB cache** (MD5 hash) eliminates repeated AI calls for identical code — response time drops from ~3s to ~5ms on cache hit
+- **3-tier AI fallback** (Gemini → Bedrock → Offline) ensures analysis always completes even if AI providers are down
+- **gunicorn 2 workers** on ML service handles concurrent requests without queuing
+- **40s axios timeout** on backend gives ML service enough time to complete AI calls on cold starts
