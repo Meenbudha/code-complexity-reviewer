@@ -1,15 +1,20 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import CodeEditor from "./components/CodeEditor";
 import ResultPanel from "./components/ResultPanel";
 import ComplexityGraph from "./components/ComplexityGraph";
 import AiAssistant from "./components/AiAssistant";
+import WarmupScreen from "./components/WarmupScreen";
 import "./index.css";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
 function App() {
+  // --- Warmup gate: show splash until backend + ML service are awake ---
+  const [isWarmedUp, setIsWarmedUp] = useState(false);
+  const handleWarmupReady = useCallback(() => setIsWarmedUp(true), []);
+
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("c");
   const [result, setResult] = useState(null);
@@ -158,6 +163,11 @@ function App() {
     setResult(null);
     setHasAnalyzed(false); 
   };
+
+  // --- Show warmup screen until services are awake ---
+  if (!isWarmedUp) {
+    return <WarmupScreen onReady={handleWarmupReady} />;
+  }
 
   return (
     <div className={`app-shell ${darkMode ? '' : 'light-mode'}`}>
