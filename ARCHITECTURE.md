@@ -15,6 +15,7 @@
 7. [Environment Variables](#7-environment-variables)
 8. [How to Run Locally](#8-how-to-run-locally)
 9. [Unit Tests](#9-unit-tests)
+10. [CI/CD Pipeline (GitHub Actions)](#10-cicd-pipeline-github-actions)
 
 ---
 
@@ -624,3 +625,149 @@ The test suite caught **2 real bugs** in the offline engine that were fixed:
 |---|---|---|
 | `binary_search` was returning `O(n)` instead of `O(log n)` | `mid = (lo + hi) // 2` floor-division pattern wasn't detected | Added `=.*//\s*2\b` regex to the loop-body scan |
 | `result += word` (variable concat) didn't trigger string concat warning | Regex only matched `+= "literal"` string literals | Broadened to `\w+\s*\+=\s*\w+` to catch variable concat |
+
+---
+
+## 10. CI/CD Pipeline (GitHub Actions)
+
+**Location:** `.github/workflows/`
+
+CodeMind AI uses **GitHub Actions** for automated testing and deployment. Every push to the `main` branch triggers a full pipeline that validates all three services and then deploys them to Render.
+
+---
+
+### 10.1 Workflow File Structure
+
+```
+.github/
+└── workflows/
+    ├── frontend.yml      ← CI: React build check (triggers on frontend/** changes)
+    ├── backend.yml       ← CI: Node.js syntax check (triggers on backend/** changes)
+    ├── ml-service.yml    ← CI: Pytest suite (triggers on ml-service/** changes)
+    └── deploy.yml        ← CD: Full deploy to Render (triggers on push to main)
+```
+
+---
+
+### 10.2 Pipeline Flow
+
+```
+Developer pushes to main
+         │
+         ▼
+┌────────────────────────────────────────────────┐
+│              GitHub Actions Triggered          │
+└────────────────────────────────────────────────┘
+         │
+    ┌────┴──────────────────┐
+    │                       │                      │
+    ▼                       ▼                      ▼
+[frontend-ci]        [backend-ci]         [ml-service-ci]
+Install npm deps     Install npm deps     Install pip deps
+npm install          node --check         python -m pytest
+--legacy-peer-deps   server.js            test_analyze_offline.py
+npm run build        (syntax only)        (12 tests, no API keys)
+    │                       │                      │
+    └───────────────────────┴──────────────────────┘
+                            │ All 3 pass ✅
+                            ▼
+          ┌────────────────────────────────┐
+          │   Deploy jobs run in parallel  │
+          └────────────────────────────────┘
+         ┌──────┬───────────┬──────────────┐
+         ▼      ▼           ▼
+ [deploy-frontend] [deploy-backend] [deploy-ml-service]
+  curl Render       curl Render      curl Render
+  webhook URL       webhook URL      webhook URL
+         │               │                │
+         └───────────────┴────────────────┘
+                         │
+                         ▼
+                  [notify job]
+              Prints deploy summary
+              (URL, commit SHA, author)
+```
+
+---
+
+### 10.3 Workflow Files Explained
+
+#### `frontend.yml` — React CI
+
+| Step | Command | Why |
+|---|---|---|
+| Checkout | `actions/checkout@v4` | Clone repo into VM |
+| Node.js setup | `actions/setup-node@v4` (v18) | Install Node with npm cache |
+| Install deps | `npm install --legacy-peer-deps` | React 19 needs this flag to bypass react-scripts peer dep conflict |
+| Build | `npm run build` | Validates the whole app compiles correctly |
+| Upload artifact | `actions/upload-artifact@v4` | Saves the `build/` folder for 7 days |
+
+#### `backend.yml` — Node.js CI
+
+| Step | Command | Why |
+|---|---|---|
+| Install deps | `npm install` | Installs express, mongoose, axios etc. |
+| Syntax check | `node --check server.js` | Validates JS syntax without running the server (no MongoDB needed) |
+
+#### `ml-service.yml` — Python CI
+
+| Step | Command | Why |
+|---|---|---|
+| Python setup | `actions/setup-python@v5` (3.10) | Matches production Python version |
+| Install deps | `pip install -r requirements.txt` | Installs flask, boto3, pytest etc. |
+| Run tests | `python -m pytest tests/test_analyze_offline.py -v` | Runs all 12 offline tests — no API keys required |
+
+#### `deploy.yml` — Full CD Pipeline
+
+Runs all 3 CI jobs inline, then if all pass, triggers Render deploy hooks for all 3 services simultaneously.
+
+---
+
+### 10.4 GitHub Secrets Required
+
+Go to: **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret Name | Value | Used In |
+|---|---|---|
+| `REACT_APP_API_URL` | Your backend Render URL | `frontend.yml`, `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_FRONTEND` | Render webhook for frontend service | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_BACKEND` | Render webhook for backend service | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_ML` | Render webhook for ML service | `deploy.yml` |
+
+**How to get a Render deploy hook URL:**
+1. Go to [render.com](https://render.com) → your service
+2. **Settings** → scroll to **Deploy Hook**
+3. Copy the URL → paste as GitHub secret
+
+---
+
+### 10.5 CI/CD Status Badges
+
+The README displays live status badges for each workflow:
+
+```markdown
+[![Frontend CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/frontend.yml/badge.svg)](…)
+[![Backend CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/backend.yml/badge.svg)](…)
+[![ML Service CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/ml-service.yml/badge.svg)](…)
+[![Deploy to Render](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/deploy.yml/badge.svg)](…)
+```
+
+These badges show ✅ green (passing) or ❌ red (failing) in real time on the GitHub repo page.
+
+---
+
+### 10.6 Monitoring & Debugging
+
+**Check pipeline status:**
+→ `https://github.com/Meenbudha/code-complexity-reviewer/actions`
+
+**If a job fails:**
+1. Click the red ❌ run in the Actions tab
+2. Click the failing job name
+3. Expand the failing step to read the log
+4. Fix the issue locally, push again — pipeline re-runs automatically
+
+**Key design decisions:**
+- `deploy.yml` uses `needs: [frontend-ci, backend-ci, ml-service-ci]` so deploys **never happen if any test fails**
+- Offline pytest tests require **zero secrets** — they test pure Python logic only
+- `--legacy-peer-deps` is used instead of `npm ci` because React 19 has a peer dependency conflict with `react-scripts 5`
