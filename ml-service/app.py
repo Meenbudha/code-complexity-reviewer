@@ -83,10 +83,21 @@ bedrock_client = None
 # --- Init Gemini ---
 if GEMINI_API_KEY:
     try:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        # http_options sets a hard timeout on ALL Gemini API calls
+        # Must be set at client level — not in generate_content() — for cross-version compatibility
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=types.HttpOptions(timeout=AI_TIMEOUT_SECONDS * 1000)
+        )
         print("✅ Gemini AI Client Initialized")
     except Exception as e:
-        print(f"⚠️ Failed to initialize Gemini Client: {e}")
+        # Older google-genai versions may not support http_options at client level either
+        # Fall back to plain init — timeout handled by fallback chain instead
+        try:
+            gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+            print("✅ Gemini AI Client Initialized (no timeout — upgrade google-genai for timeout support)")
+        except Exception as e2:
+            print(f"⚠️ Failed to initialize Gemini Client: {e2}")
 else:
     print("⚠️ GEMINI_API_KEY not found. Gemini disabled.")
 
@@ -290,15 +301,15 @@ def is_rate_limit_error(e):
 # --- AI PROVIDER 1: GEMINI ---
 # ============================================================
 def call_gemini(prompt, max_tokens=300):
+    # http_options timeout is set at client init level (cross-version compatible)
+    # Do NOT pass http_options here — older google-genai versions don't support it in generate_content()
     response = gemini_client.models.generate_content(
         model="gemini-2.0-flash",
         contents=[prompt],
         config=types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=0.2
-        ),
-        # Hard timeout — if Gemini hangs, raise after 10s
-        http_options=types.HttpOptions(timeout=AI_TIMEOUT_SECONDS * 1000)
+        )
     )
     return response.text.strip()
 
