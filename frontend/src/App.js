@@ -109,20 +109,24 @@ function App() {
       });
       const data = await response.json();
 
-      // Handle language mismatch error from the backend
-      if (data.error && data.detected) {
+      // Handle language mismatch (422) from ML service
+      // ML sends: { error: "...", code: 422, detail: "detected:java" }
+      if (data.error && data.code === 422) {
+        const detectedLang = data.detail?.startsWith("detected:")
+          ? data.detail.split(":")[1]
+          : null;
         const errorResult = {
           time: "N/A",
           space: "N/A",
           warnings: [`⚠️ ${data.error}`],
-          suggestions: [
-            `Please change the dropdown to "${data.detected.charAt(0).toUpperCase() + data.detected.slice(1)}".`
-          ]
+          suggestions: detectedLang
+            ? [`Please change the dropdown to "${detectedLang.charAt(0).toUpperCase() + detectedLang.slice(1)}".`]
+            : ["Please select the correct language from the dropdown."]
         };
         setResult(errorResult);
         return;
       }
-      
+
       setResult(data);
       
       const newEntry = {

@@ -82,6 +82,7 @@ app.post("/analyze", async (req, res) => {
     res.json({ ...resultData, _id: newAnalysis._id, _cached: false });
 
   } catch (error) {
+    // ── Timeout ───────────────────────────────────────────────────────
     if (error.code === "ECONNABORTED") {
       return res.status(504).json({
         time: "Timeout",
@@ -90,6 +91,13 @@ app.post("/analyze", async (req, res) => {
         suggestions: ["Please try again in a few seconds. The AI might be under heavy load."]
       });
     }
+    // ── ML service returned a non-2xx (e.g. 422 language mismatch) ────
+    // Axios throws for any non-2xx — forward the ML response as-is
+    if (error.response) {
+      console.warn(`⚠️  ML Service returned ${error.response.status}:`, error.response.data?.error);
+      return res.status(error.response.status).json(error.response.data);
+    }
+    // ── Network / unreachable ─────────────────────────────────────────
     console.error("Error connecting to ML Service:", error.message);
     res.status(500).json({
       time: "Error",
