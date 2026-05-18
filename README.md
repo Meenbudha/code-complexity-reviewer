@@ -9,6 +9,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org)
 
 [![Frontend CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/frontend.yml/badge.svg)](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/frontend.yml)
+[![Backend CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/backend.yml/badge.svg)](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/backend.yml)
 [![ML Service CI](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/ml-service.yml/badge.svg)](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/ml-service.yml)
 [![Deploy to Render](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/deploy.yml/badge.svg)](https://github.com/Meenbudha/code-complexity-reviewer/actions/workflows/deploy.yml)
 

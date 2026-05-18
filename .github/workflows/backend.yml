@@ -1,0 +1,38 @@
+name: 🟡 Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+
+jobs:
+  build:
+    name: Build & Validate Node.js Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ✅ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 📦 Install dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: 🔍 Verify server.js exists and is valid
+        working-directory: ./backend
+        run: node --check server.js   # Syntax check without running the server
+
+      - name: ✅ Backend CI passed
+        run: echo "Backend build and syntax check passed ✅"

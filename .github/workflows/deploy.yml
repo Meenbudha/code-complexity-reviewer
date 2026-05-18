@@ -6,7 +6,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────
-  # JOB 1: Run Frontend CI before deploying
+  # JOB 1: Frontend CI
   # ──────────────────────────────────────────────────────────────────
   frontend-ci:
     name: ⚛️ Frontend Build Check
@@ -35,7 +35,33 @@ jobs:
           REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
 
   # ──────────────────────────────────────────────────────────────────
-  # JOB 2: Run ML Service tests before deploying
+  # JOB 2: Backend CI
+  # ──────────────────────────────────────────────────────────────────
+  backend-ci:
+    name: 🟡 Backend Syntax Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ✅ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 📦 Install dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: 🔍 Syntax check server.js
+        working-directory: ./backend
+        run: node --check server.js
+
+  # ──────────────────────────────────────────────────────────────────
+  # JOB 3: ML Service CI
   # ──────────────────────────────────────────────────────────────────
   ml-service-ci:
     name: 🐍 ML Service Tests
@@ -62,57 +88,71 @@ jobs:
         run: pytest tests/test_analyze_offline.py -v --tb=short
 
   # ──────────────────────────────────────────────────────────────────
-  # JOB 3: Deploy Frontend to Render (only after CI jobs pass)
+  # JOB 4: Deploy Frontend → Render (all 3 CI jobs must pass)
   # ──────────────────────────────────────────────────────────────────
   deploy-frontend:
     name: 🌐 Deploy Frontend → Render
     runs-on: ubuntu-latest
-    needs: [frontend-ci, ml-service-ci]   # waits for both CI jobs to pass ✅
+    needs: [frontend-ci, backend-ci, ml-service-ci]
 
     steps:
       - name: 🚀 Trigger Render deploy (Frontend)
         run: |
           curl --silent --fail -X POST \
             "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}"
-        # How to get this URL:
-        # Render Dashboard → your frontend service → Settings → Deploy Hook → Copy URL
-        # Then: GitHub repo → Settings → Secrets → Actions → New Secret
-        # Name: RENDER_DEPLOY_HOOK_FRONTEND  |  Value: <paste URL>
+        # Secret: RENDER_DEPLOY_HOOK_FRONTEND
+        # Render → frontend service → Settings → Deploy Hook
 
   # ──────────────────────────────────────────────────────────────────
-  # JOB 4: Deploy ML Service to Render (only after CI jobs pass)
+  # JOB 5: Deploy Backend → Render (all 3 CI jobs must pass)
+  # ──────────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: 🟡 Deploy Backend → Render
+    runs-on: ubuntu-latest
+    needs: [frontend-ci, backend-ci, ml-service-ci]
+
+    steps:
+      - name: 🚀 Trigger Render deploy (Backend)
+        run: |
+          curl --silent --fail -X POST \
+            "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
+        # Secret: RENDER_DEPLOY_HOOK_BACKEND
+        # Render → backend service → Settings → Deploy Hook
+
+  # ──────────────────────────────────────────────────────────────────
+  # JOB 6: Deploy ML Service → Render (all 3 CI jobs must pass)
   # ──────────────────────────────────────────────────────────────────
   deploy-ml-service:
     name: 🤖 Deploy ML Service → Render
     runs-on: ubuntu-latest
-    needs: [frontend-ci, ml-service-ci]   # waits for both CI jobs to pass ✅
+    needs: [frontend-ci, backend-ci, ml-service-ci]
 
     steps:
       - name: 🚀 Trigger Render deploy (ML Service)
         run: |
           curl --silent --fail -X POST \
             "${{ secrets.RENDER_DEPLOY_HOOK_ML }}"
-        # How to get this URL:
-        # Render Dashboard → your ml-service → Settings → Deploy Hook → Copy URL
-        # Then: GitHub repo → Settings → Secrets → Actions → New Secret
-        # Name: RENDER_DEPLOY_HOOK_ML  |  Value: <paste URL>
+        # Secret: RENDER_DEPLOY_HOOK_ML
+        # Render → ml-service → Settings → Deploy Hook
 
   # ──────────────────────────────────────────────────────────────────
-  # JOB 5: Notify deployment success
+  # JOB 7: Deployment Summary
   # ──────────────────────────────────────────────────────────────────
   notify:
     name: ✅ Deployment Summary
     runs-on: ubuntu-latest
-    needs: [deploy-frontend, deploy-ml-service]
+    needs: [deploy-frontend, deploy-backend, deploy-ml-service]
     if: always()
 
     steps:
       - name: 📣 Print deployment status
         run: |
           echo "========================================"
-          echo "  CodeMind AI Deployment Summary"
+          echo "  CodeMind AI — Full Deploy Summary"
           echo "========================================"
           echo "  Frontend:   https://codemind-frontend.onrender.com"
+          echo "  Backend:    Render (Node.js + MongoDB)"
+          echo "  ML Service: Render (Python Flask)"
           echo "  Triggered:  $(date -u)"
           echo "  Commit:     ${{ github.sha }}"
           echo "  Author:     ${{ github.actor }}"
