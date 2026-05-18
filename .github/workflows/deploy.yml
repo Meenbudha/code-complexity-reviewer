@@ -97,11 +97,17 @@ jobs:
 
     steps:
       - name: 🚀 Trigger Render deploy (Frontend)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
         run: |
-          curl --silent --fail -X POST \
-            "${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}"
-        # Secret: RENDER_DEPLOY_HOOK_FRONTEND
-        # Render → frontend service → Settings → Deploy Hook
+          if [ -z "$HOOK" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_FRONTEND secret not set — skipping deploy."
+            echo "    Add it: GitHub repo → Settings → Secrets → Actions → New secret"
+          else
+            echo "🚀 Triggering Render deploy for Frontend..."
+            curl --silent --fail -X POST "$HOOK"
+            echo "✅ Frontend deploy triggered successfully!"
+          fi
 
   # ──────────────────────────────────────────────────────────────────
   # JOB 5: Deploy Backend → Render (all 3 CI jobs must pass)
@@ -113,11 +119,17 @@ jobs:
 
     steps:
       - name: 🚀 Trigger Render deploy (Backend)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
         run: |
-          curl --silent --fail -X POST \
-            "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
-        # Secret: RENDER_DEPLOY_HOOK_BACKEND
-        # Render → backend service → Settings → Deploy Hook
+          if [ -z "$HOOK" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_BACKEND secret not set — skipping deploy."
+            echo "    Add it: GitHub repo → Settings → Secrets → Actions → New secret"
+          else
+            echo "🚀 Triggering Render deploy for Backend..."
+            curl --silent --fail -X POST "$HOOK"
+            echo "✅ Backend deploy triggered successfully!"
+          fi
 
   # ──────────────────────────────────────────────────────────────────
   # JOB 6: Deploy ML Service → Render (all 3 CI jobs must pass)
@@ -129,11 +141,17 @@ jobs:
 
     steps:
       - name: 🚀 Trigger Render deploy (ML Service)
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_ML }}
         run: |
-          curl --silent --fail -X POST \
-            "${{ secrets.RENDER_DEPLOY_HOOK_ML }}"
-        # Secret: RENDER_DEPLOY_HOOK_ML
-        # Render → ml-service → Settings → Deploy Hook
+          if [ -z "$HOOK" ]; then
+            echo "⚠️  RENDER_DEPLOY_HOOK_ML secret not set — skipping deploy."
+            echo "    Add it: GitHub repo → Settings → Secrets → Actions → New secret"
+          else
+            echo "🚀 Triggering Render deploy for ML Service..."
+            curl --silent --fail -X POST "$HOOK"
+            echo "✅ ML Service deploy triggered successfully!"
+          fi
 
   # ──────────────────────────────────────────────────────────────────
   # JOB 7: Deployment Summary
