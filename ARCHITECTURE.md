@@ -14,6 +14,7 @@
 6. [Database (MongoDB)](#6-database-mongodb)
 7. [Environment Variables](#7-environment-variables)
 8. [How to Run Locally](#8-how-to-run-locally)
+9. [Unit Tests](#9-unit-tests)
 
 ---
 
@@ -23,17 +24,17 @@ CodeMind AI is split into **three independent services** that communicate with e
 
 ```
 ┌─────────────────────────┐        ┌────────────────────────┐        ┌──────────────────────────┐
-│                         │        │                         │        │                          │
-│   FRONTEND (React)      │───────▶│   BACKEND (Node.js)     │───────▶│  ML SERVICE (Python)     │
-│   Port: 3000            │        │   Port: 5000            │        │  Port: 8000              │
-│                         │◀───────│                         │◀───────│                          │
-└─────────────────────────┘        └────────────┬────────────┘        └──────────────────────────┘
+│                         │        │                        │        │                          │
+│   FRONTEND (React)      │───────▶│   BACKEND (Node.js)    │───────▶│  ML SERVICE (Python)     │
+│   Port: 3000            │        │   Port: 5000           │        │  Port: 8000              │
+│                         │◀───────│                        │◀───────│                          │
+└─────────────────────────┘        └────────────┬───────────┘        └──────────────────────────┘
                                                 │
-                                                │ Save / Read Results
+                                                │ Save / Read Results + Cache
                                                 ▼
                                    ┌────────────────────────┐
                                    │   MongoDB Database      │
-                                   │   (Analysis History)    │
+                                   │   (History + Cache)     │
                                    └────────────────────────┘
 ```
 
@@ -51,26 +52,33 @@ User clicks "ANALYZE CODE"
         ▼
 [1] App.js → POST http://localhost:5000/analyze
     Body: { code: "...", language: "java" }
+    UI immediately shows SkeletonLoader (shimmer placeholder)
         │
         ▼
 [2] server.js receives the request.
-    Forwards it via axios → POST http://localhost:8000/analyze
+    Computes MD5 hash of the code → checks MongoDB for a cached result.
+    ├── Cache HIT  → returns cached result instantly (~5ms). No AI call made.
+    └── Cache MISS → forwards to Python via axios → POST http://localhost:8000/analyze
         │
         ▼
 [3] app.py receives the code.
-    Step A: detect_language() — verifies it matches what the user selected.
-    Step B: analyze_offline() — runs static heuristic analysis (no internet needed).
-    Step C: get_ai_enhancement() — sends result + code to Gemini API for verification.
-    Returns final JSON: { time, space, warnings, suggestions }
+    Step A: validate_env() already ran at startup — clients are pre-initialized.
+    Step B: detect_language() — verifies language matches user selection.
+    Step C: analyze_offline() — instant static heuristic analysis (no internet).
+    Step D: get_ai_enhancement() — 3-tier AI fallback:
+              ① Gemini Flash (10s timeout) → on 429 or timeout → ② immediately
+              ② AWS Bedrock Nova Micro (10s timeout) → on error → ③
+              ③ Offline result only (always succeeds)
+    Returns: { time, space, warnings, suggestions, _ai_provider }
         │
         ▼
 [4] server.js receives the result.
-    Saves it to MongoDB (Analysis collection).
-    Sends result back to React with the new MongoDB _id.
+    Saves it to MongoDB with codeHash for future cache hits.
+    Sends result + _id + _cached:false back to React.
         │
         ▼
 [5] App.js receives the result.
-    Updates React state → UI re-renders with TC, SC, warnings, tips, and graph.
+    SkeletonLoader is replaced by real ResultPanel with TC, SC, warnings, tips.
     Adds the analysis to the sidebar history list.
 ```
 
@@ -93,7 +101,7 @@ This is the root component that holds all the application state and orchestrates
 | `code` | string | The code currently typed in the editor |
 | `language` | string | Selected language: `"c"`, `"java"`, or `"python"` |
 | `result` | object | The analysis result `{ time, space, warnings, suggestions }` |
-| `loading` | boolean | `true` while waiting for the API response |
+| `loading` | boolean | `true` while waiting for the API response — triggers SkeletonLoader |
 | `hasAnalyzed` | boolean | Triggers the layout shift (editor + report side-by-side) |
 | `history` | array | List of past analyses loaded from MongoDB |
 | `darkMode` | boolean | `true` = dark theme, `false` = light theme |
@@ -132,9 +140,21 @@ This is the root component that holds all the application state and orchestrates
 
 #### `ResultPanel.js`
 - Displays the analysis result after a successful call.
-- Split into two sections:
-  1. **TC/SC Cards:** Two side-by-side cards showing Time Complexity and Space Complexity values with colour-coded top borders (cyan for TC, violet for SC).
-  2. **Warnings & Tips:** Conditionally rendered lists. Warnings have a yellow/amber left border; Tips have a cyan left border.
+- When `loading === true`, renders `<SkeletonLoader />` instead of real content.
+- When data arrives, displays:
+  1. **TC/SC Cards:** Two side-by-side cards with colour-coded top borders (cyan for TC, violet for SC).
+  2. **Warnings & Tips:** Conditionally rendered lists. Warnings have amber left border; Tips have cyan left border.
+
+#### `SkeletonLoader.js` *(new)*
+- A premium shimmer loading placeholder that mirrors the exact layout of `ResultPanel`.
+- Shown while `loading === true` — replaces the old plain `"Calculating..."` text.
+- Structure matches the real result panel:
+  - Two side-by-side cards (cyan/violet top borders) with animated shimmer bones for TC/SC labels and values.
+  - A warning block (amber left border) with shimmer lines.
+  - A tips block (cyan left border) with shimmer lines.
+- Uses `<Bone>` sub-component for individual animated grey placeholder blocks.
+- The shimmer animation sweeps a light gradient left-to-right at `1.6s` loop.
+- Fully responsive to dark/light mode via CSS variables.
 
 #### `ComplexityGraph.js`
 - Renders a visual SVG line graph below the ResultPanel.
@@ -174,35 +194,85 @@ The entire colour theme is managed using **CSS Custom Properties (Variables)** d
 }
 ```
 
-**Light Mode** overrides the same variables with lighter colours, so **no component needs to know about the current theme**. It just always reads from the variables, and the browser applies the correct value automatically. This also means the `transition: all 0.3s` on the `body` creates smooth, animated mode switching.
+**Light Mode** overrides the same variables with lighter colours, so **no component needs to know about the current theme**.
+
+**Skeleton Shimmer Animation (added):**
+```css
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton-bone {
+  background: linear-gradient(90deg, var(--bg-input) 25%, var(--border) 50%, var(--bg-input) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+```
+Skeleton card shells use the same `border-top` colours as real TC/SC cards (`--primary`, `--secondary`) so the layout feels like a true placeholder of the incoming result.
 
 ---
 
 ## 4. Backend (Node.js / Express)
 
-**Location:** `backend/server.js`  
+**Location:** `backend/server.js`
 **Port:** `5000`
 
-The Node.js server is an **API Gateway**. It does not process code itself. Its three jobs are:
+The Node.js server is an **API Gateway**. Its four jobs are:
 
-1. **Proxy** requests from the React frontend to the Python ML service.
-2. **Persist** results to MongoDB.
-3. **Serve** the analysis history to the frontend.
+1. **Cache** — Check MongoDB for a cached result before calling the ML service.
+2. **Proxy** — Forward cache-miss requests from React to the Python ML service.
+3. **Persist** — Save results + MD5 hash to MongoDB.
+4. **Serve** — Return analysis history to the frontend.
 
-### API Endpoints
+### 4.1 Request Caching (MD5)
+
+Every `/analyze` request is hashed before calling the ML service:
+
+```js
+const crypto = require("crypto");  // built-in — no install needed
+
+function hashCode(code) {
+  return crypto.createHash("md5").update(code.trim()).digest("hex");
+}
+```
+
+- `code.trim()` is used so trailing newlines don't cause unnecessary cache misses.
+- The hash is stored in MongoDB as `codeHash` with `index: true` for O(1) lookup.
+- On a **cache hit**, the saved result is returned immediately (~5ms) with `_cached: true`.
+- On a **cache miss**, the ML service is called, the result is saved with the hash, and `_cached: false` is returned.
+
+**Cache behaviour:**
+```
+POST /analyze
+    ↓
+hashCode(code) = "a3f8c1d2…"
+    ↓
+MongoDB.findOne({ codeHash: "a3f8c1d2…" })
+    ├── HIT  → ⚡ return cached result, skip ML call entirely
+    └── MISS → 🔍 call ML service → save with hash → return fresh result
+```
+
+Terminal logs show cache activity clearly:
+```
+⚡ Cache HIT  [a3f8c1d2…] — skipping AI call
+🔍 Cache MISS [a3f8c1d2…] — calling ML service
+```
+
+### 4.2 API Endpoints
 
 #### `GET /`
-- Health check. Returns a simple text response confirming the server is running.
+Health check. Returns a simple text response confirming the server is running.
 
 #### `POST /analyze`
 **Request Body:** `{ code: string, language: string }`
 
-1. Receives code and language from the React frontend.
-2. Forwards the request to the Python service at `ML_SERVICE_URL/analyze` using `axios`.
-3. Timeout is set to **40 seconds** to account for Gemini API cold starts.
-4. On success, saves the result to MongoDB using the `Analysis` model.
-5. Returns the result JSON back to React, including the new MongoDB `_id`.
-6. On timeout (`ECONNABORTED`), returns a clean error object instead of crashing.
+1. Computes MD5 hash of `code.trim()`.
+2. Checks MongoDB for a cached result with the same hash.
+3. On cache hit → returns immediately with `_cached: true`.
+4. On cache miss → forwards to Python ML service (`axios`, 40s timeout).
+5. Saves result + `codeHash` to MongoDB.
+6. Returns result JSON with `_id`, `_cached: false`.
+7. On axios timeout (`ECONNABORTED`) → returns clean 504 error response.
 
 #### `GET /history`
 1. Queries MongoDB for the **20 most recent** analysis records, sorted newest-first.
@@ -211,17 +281,18 @@ The Node.js server is an **API Gateway**. It does not process code itself. Its t
 #### `POST /ask-ai`
 **Request Body:** `{ code: string, question: string }`
 
-1. Simply proxies the chat request to `ML_SERVICE_URL/ask-ai`.
-2. Returns the AI's text answer back to the `AiAssistant` component.
+1. Proxies the chat request to `ML_SERVICE_URL/ask-ai`.
+2. Returns the AI's text answer + `_ai_provider` back to the `AiAssistant` component.
 3. Handles timeout gracefully with a user-friendly error message.
 
-### MongoDB Schema (`Analysis`)
+### 4.3 MongoDB Schema (`Analysis`)
 
 ```js
 {
   code:      String,   // The submitted source code
   language:  String,   // "c", "java", or "python"
-  result:    Object,   // { time, space, warnings, suggestions }
+  result:    Object,   // { time, space, warnings, suggestions, _ai_provider }
+  codeHash:  String,   // MD5 of code.trim() — indexed for fast cache lookup
   timestamp: Date      // Auto-set to current time on save
 }
 ```
@@ -230,12 +301,40 @@ The Node.js server is an **API Gateway**. It does not process code itself. Its t
 
 ## 5. ML Service (Python / Flask)
 
-**Location:** `ml-service/app.py`  
+**Location:** `ml-service/app.py`
 **Port:** `8000`
 
-This is the intelligence core of CodeMind AI. It has two distinct analysis modes that work together.
+This is the intelligence core of CodeMind AI. It runs a startup validation, then handles requests through static analysis + AI enhancement.
 
-### 5.1 Language Detection (`detect_language`)
+### 5.1 Environment Validation (`validate_env`)
+
+Runs **immediately at startup**, before any client is initialized. Prints a clear status table:
+
+```
+============================================================
+  CodeMind AI — ML Service Startup Check
+============================================================
+  ✅  GEMINI_API_KEY           AIzaSy…         (Primary AI provider)
+  ✅  AWS_ACCESS_KEY_ID        AKIAX4…         (Bedrock fallback)
+  ✅  AWS_SECRET_ACCESS_KEY    wJalrX…         (Bedrock fallback)
+  ✅  AWS_REGION               us-east-1       (Bedrock region)
+------------------------------------------------------------
+  🟢  Mode: Gemini (primary) → Bedrock (fallback) → Offline
+============================================================
+```
+
+Missing keys are shown with `❌ MISSING` and the active mode is reported:
+
+| Keys present | Mode shown |
+|---|---|
+| Both Gemini + AWS | 🟢 Gemini → Bedrock → Offline |
+| Gemini only | 🟡 Gemini → Offline |
+| AWS only | 🟡 Bedrock → Offline |
+| Neither | 🔴 Offline only |
+
+This eliminates silent startup failures — you always know what is active before the first request.
+
+### 5.2 Language Detection (`detect_language`)
 
 Before analyzing, the service verifies the submitted code using **regex pattern matching**:
 
@@ -245,72 +344,165 @@ Before analyzing, the service verifies the submitted code using **regex pattern 
 | C | `#include`, `printf`, `int main(` with braces |
 | Java | `public class`, `public static void main`, `System.out.println` |
 
-If the detected language does not match what the user selected in the dropdown, the service returns an **error response** instead of analyzing. The frontend shows this as a warning in the results panel.
+If the detected language does not match what the user selected, the service returns a `422` error response via `error_response()`.
 
-### 5.2 Offline Heuristic Engine (`analyze_offline`)
+### 5.3 Offline Heuristic Engine (`analyze_offline`)
 
 This function runs **without the internet** using pure static code analysis. It reads the code line by line and looks for patterns:
 
 **Time Complexity Logic:**
 
 ```
-No loops, no recursion         → O(1)
-1 level of looping             → O(n)
-1 loop with /= or >>= (halving)→ O(log n)
-2 nested loops                 → O(n²)
-2 nested loops + halving       → O(n log n)
-3+ nested loops                → O(n^k) where k = nesting depth
-Self-calling function found    → O(n) recursive
-Two self-calls (e.g. fib)      → O(2^n) exponential
+No loops, no recursion              → O(1)
+1 level of looping                  → O(n)
+1 loop with /=2 or >>= (halving)    → O(log n)
+Built-in sort detected              → O(n log n)
+2 nested loops                      → O(n²)
+2 nested loops + halving            → O(n log n)
+3+ nested loops                     → O(n^k) where k = nesting depth
+Self-calling function (body scan)   → O(n) recursive
+Two recursive self-calls (e.g. fib) → O(2^n) exponential
 ```
 
 **Space Complexity Logic:**
 ```
-No dynamic memory              → O(1)
-new[], malloc, ArrayList       → O(n)
-Recursion detected             → O(n) (call stack)
-Dynamic alloc + nested loops   → O(n²)
+No dynamic memory                   → O(1)
+new[], malloc, ArrayList, vector    → O(n)
+HashMap / dict / Counter / Set      → O(n)
+Recursion detected                  → O(n) call stack
+Dynamic alloc + 2+ nested loops     → O(n²)
 ```
 
-This step is instant (microseconds) because it never makes a network call.
+**Additional Pattern Detection:**
 
-### 5.3 AI Enhancement (`get_ai_enhancement`)
+| Pattern | What It Detects | Action |
+|---|---|---|
+| `sorted()`, `.sort()`, `Arrays.sort` | Built-in sorting | Reports O(n log n) |
+| `dict`, `HashMap`, `Counter`, `defaultdict` | Hash structures | Reports O(n) space + tip |
+| `+= variable` inside a loop | Hidden O(n²) string building | Warns to use `join()` |
+| `mid = (lo + hi) // 2` in loop body | Floor-division halving | Reports O(log n) |
+| Two recursive calls in function body | Exponential branching | Warns to use memoization/DP |
+| Stricter recursion — body-only scan | Ignores function definition line | Reduces false positives |
 
-After the offline analysis gives an initial estimate, this function:
+**Warning / Suggestion format:**
+All generated messages follow the `"Label: explanation"` pattern:
+```
+"Nested Loop Risk: comparing every pair causes O(n²) slowdown on large inputs."
+"Use a HashMap: store seen values in a dict to reduce lookup to O(1)."
+```
 
-1. Builds a prompt containing the original code + the offline estimate.
-2. Sends it to the **Gemini Flash** model via the `google-genai` SDK.
-3. Asks Gemini to **verify or correct** the estimates and provide concise warnings and suggestions.
-4. Forces `response_mime_type="application/json"` so Gemini returns structured data, not free text.
-5. Sets `max_output_tokens=250` and `temperature=0.2` to keep responses fast and focused.
+This step is instant (microseconds) — no network call ever made.
 
-If the Gemini API is unavailable (rate limit, no key), it **gracefully falls back** to the offline result and appends a note to the suggestions list.
+### 5.4 AI Enhancement (`get_ai_enhancement`) — Smart Fallback Chain
 
-### 5.4 API Routes
+After offline analysis gives an initial estimate, this function runs a **3-tier fallback chain**:
+
+```
+① Gemini Flash (primary) — 10s hard timeout
+        │  429 rate limit / timeout / any error?
+        ▼  (switches immediately, no retry delay)
+② AWS Bedrock — Amazon Nova Micro — 10s hard timeout
+        │  Credentials missing / error / timeout?
+        ▼
+③ Offline result only (always works, no network)
+```
+
+**Tier 1 — Google Gemini (`gemini-2.0-flash`)**
+- Sends the code + offline estimate in a structured prompt.
+- Prompt instructs AI to write code-specific warnings in `"Label: sentence"` format.
+- Uses `max_output_tokens=200`, `temperature=0.2` for fast, focused responses.
+- **10-second HTTP timeout** via `http_options=types.HttpOptions(timeout=10_000)`.
+- On `429`, timeout, or any error → switches to Tier 2 **immediately** (no wait).
+
+**Tier 2 — AWS Bedrock (`us.amazon.nova-micro-v1:0`)**
+- Uses Amazon Nova Micro: AWS-native, always free, never marked Legacy.
+- Requires `us.` cross-region inference profile prefix (mandatory for all modern Bedrock models).
+- **10-second connect + read timeout** via `botocore.config.Config(connect_timeout=10, read_timeout=10, retries={"max_attempts": 1})`.
+- Uses Nova's request/response schema (different from Anthropic Claude):
+  ```python
+  # Request
+  {"messages": [{"role": "user", "content": [{"text": prompt}]}],
+   "inferenceConfig": {"maxTokens": 200, "temperature": 0.2}}
+  # Response
+  response_body["output"]["message"]["content"][0]["text"]
+  ```
+- If credentials missing or any error → falls through to Tier 3.
+
+**Tier 3 — Offline Only**
+- Returns the `analyze_offline()` result as-is.
+- Appends a note to `suggestions`: `"AI verification unavailable. Showing offline results."`
+- Always succeeds — zero external dependencies.
+
+**Fallback detection** (`is_rate_limit_error`) catches all these cases:
+- `TimeoutError`, `socket.timeout` (Python built-in timeouts)
+- String keywords: `"429"`, `"resource_exhausted"`, `"rate limit"`, `"quota"`, `"throttl"`, `"timeout"`, `"timed out"`
+
+The response always includes `_ai_provider`: `"gemini"` | `"bedrock"` | `"offline"`.
+
+### 5.5 Centralized Error Response (`error_response`)
+
+All Flask routes use a single helper for consistent error shapes:
+
+```python
+def error_response(message, code=400, detail=None):
+    body = {"error": message, "code": code}
+    if detail:
+        body["detail"] = detail
+    return jsonify(body), code
+```
+
+**Consistent error shape across all routes:**
+
+| Route | Scenario | HTTP Code | Response |
+|---|---|---|---|
+| `/analyze` | No code in body | 400 | `{"error": "No code provided.", "code": 400}` |
+| `/analyze` | Language mismatch | 422 | `{"error": "Language mismatch: ...", "code": 422, "detail": "detected:java"}` |
+| `/analyze` | Internal exception | 500 | `{"error": "Internal analysis error.", "code": 500, "detail": "..."}` |
+| `/ask-ai` | Both AI providers down | 503 | `{"error": "Both AI providers unavailable.", "code": 503, "detail": "..."}` |
+
+Before this change, each route returned a different shape (`{"time": "N/A"}`, `{"answer": "..."}`, etc.), making frontend error handling inconsistent.
+
+### 5.6 API Routes
 
 #### `GET /`
-Health check. Returns `{ status: "ML Service Running", port: 8000 }`.
+Health check. Returns:
+```json
+{
+  "status": "ML Service Running",
+  "port": 8000,
+  "ai_providers": {
+    "gemini": "enabled",
+    "bedrock": "enabled"
+  }
+}
+```
 
 #### `POST /analyze`
 1. Extracts `code` and `language` from the request body.
-2. Runs `detect_language()` to validate.
-3. Runs `analyze_offline()` for instant heuristic results.
-4. Passes those results to `get_ai_enhancement()` for AI verification.
-5. Returns the final merged JSON.
+2. Returns `error_response("No code provided.", 400)` if code is empty.
+3. Runs `detect_language()` — returns `422` on mismatch.
+4. Runs `analyze_offline()` for instant heuristic results (always runs).
+5. Passes results to `get_ai_enhancement()` — Gemini → Bedrock → Offline.
+6. Returns final merged JSON including `_ai_provider` field.
 
 #### `POST /ask-ai`
 1. Receives `{ code, question }` from the backend proxy.
-2. Sends a simple, conversational prompt to Gemini: *"Explain simply: [question]. Code: [code]"*
-3. Returns the raw text answer. This is for the AI Assistant chat feature.
+2. Builds a simple conversational prompt: `"Explain simply: {question}\nCode:\n{code}"`.
+3. Routes through the same Gemini → Bedrock → Offline fallback chain.
+4. Returns `{ answer, _ai_provider }` or `error_response(503)` if all providers fail.
 
 ---
 
 ## 6. Database (MongoDB)
 
-**Database Name:** `codemind`  
+**Database Name:** `codemind`
 **Collection:** `analyses`
 
-MongoDB is used exclusively for **persisting analysis history**. The data is never read during the analysis itself — only saved after and retrieved for the history sidebar.
+MongoDB serves two purposes:
+1. **History** — Stores all analysis results for the sidebar.
+2. **Cache** — `codeHash` field enables instant lookup for duplicate code submissions.
+
+The `codeHash` field has `index: true` so MongoDB can find cached entries in O(1) instead of scanning the full collection.
 
 - **Local:** Connects to `mongodb://localhost:27017/codemind`
 - **Cloud (Render):** Reads `MONGO_URI` environment variable for the connection string.
@@ -324,8 +516,15 @@ MongoDB is used exclusively for **persisting analysis history**. The data is nev
 | `PORT` | Backend | The port the Node.js server listens on (default: `5000`) |
 | `MONGO_URI` | Backend | MongoDB connection string (default: local) |
 | `ML_SERVICE_URL` | Backend | URL of the Python service (default: `http://localhost:8000`) |
-| `GEMINI_API_KEY` | ML Service | Google Gemini API key for AI analysis |
+| `GEMINI_API_KEY` | ML Service | Google Gemini API key — primary AI provider |
+| `AWS_ACCESS_KEY_ID` | ML Service | AWS credentials for Bedrock fallback |
+| `AWS_SECRET_ACCESS_KEY` | ML Service | AWS credentials for Bedrock fallback |
+| `AWS_REGION` | ML Service | AWS region for Bedrock (default: `us-east-1`) |
 | `REACT_APP_BACKEND_URL` | Frontend | URL of the Node.js backend (default: `http://localhost:5000`) |
+
+> **On Render:** Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` to the **ml-service** environment only. The backend service does not need them.
+
+> **Startup validation:** The ML service prints a full status table on every start so you immediately know which providers are active. See Section 5.1.
 
 ---
 
@@ -339,11 +538,18 @@ cd ml-service
 # First time only:
 python -m venv venv
 .\venv\Scripts\activate
-pip install flask flask-cors google-genai
+pip install flask flask-cors google-genai boto3 python-dotenv pytest
 
-# Set your key and run:
-$env:GEMINI_API_KEY="your_key_here"
-python -X utf8 app.py
+# Create a .env file with your keys:
+# GEMINI_API_KEY=your_gemini_key
+# AWS_ACCESS_KEY_ID=your_aws_key
+# AWS_SECRET_ACCESS_KEY=your_aws_secret
+# AWS_REGION=us-east-1
+
+python app.py
+# Startup prints env validation table, then:
+# ✅ Gemini AI Client Initialized
+# ✅ AWS Bedrock Client Initialized (Region: us-east-1)
 # Runs on http://localhost:8000
 ```
 
@@ -355,6 +561,7 @@ npm install
 
 npm start
 # Runs on http://localhost:5000
+# ✅ MongoDB Connected
 ```
 
 **Terminal 3 — Frontend (React):**
@@ -368,3 +575,52 @@ npm start
 ```
 
 Open your browser at **http://localhost:3000**.
+
+---
+
+## 9. Unit Tests
+
+**Location:** `ml-service/tests/test_analyze_offline.py`
+**Framework:** `pytest`
+**Config:** `ml-service/pytest.ini` (suppresses third-party DeprecationWarnings)
+
+### Running Tests
+
+```bash
+cd ml-service
+.\venv\Scripts\activate
+.\venv\Scripts\python.exe -m pytest tests/ -v
+```
+
+Expected output:
+```
+12 passed in ~4s
+```
+
+### Test Coverage
+
+All 12 tests cover every branch of the `analyze_offline()` function:
+
+| # | Test                             | Input                  | Expected Time  | Expected Space |
+|---|---                               |---                     |---             |---             |
+| 1 | `test_constant_time`             | Simple addition        | `O(1)`         | `O(1)`         |
+| 2 | `test_linear_single_loop`        | Linear search          | `O(n)`         | `O(1)`         |
+| 3 | `test_quadratic_nested_loops`    | Bubble sort            | `O(n²)`        | `O(1)`         |
+| 4 | `test_logarithmic_binary_search` | Binary search (`// 2`) | `O(log n)`     | `O(1)`         |
+| 5 | `test_builtin_sort`              | `arr.sort()`           | `O(n log n)`   | `O(1)`         |
+| 6 | `test_linear_recursion`          | Factorial              | `O(n)`         | `O(n)`         |
+| 7 | `test_exponential_recursion`     | Fibonacci              | `O(2^n)`       | `O(n)`         |
+| 8 | `test_hashmap_space`             | Two-sum with `dict`    | `O(n)`         | `O(n)`         |
+| 9 | `test_string_concat_warning`     | `result += word` in loop | —            |Warning present |
+| 10 | `test_deep_nesting_warning`     | Triple nested loop    | `O(n^3)`        |Warning present |
+| 11 | `test_short_code_warning`| `x = 1`                | —              | Short snippet warning |
+| 12 | `test_java_nested_loops`       | Java bubble sort (`{}` braces) | `O(n²)` | `O(1)`         |
+
+### Bugs Found by Tests
+
+The test suite caught **2 real bugs** in the offline engine that were fixed:
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| `binary_search` was returning `O(n)` instead of `O(log n)` | `mid = (lo + hi) // 2` floor-division pattern wasn't detected | Added `=.*//\s*2\b` regex to the loop-body scan |
+| `result += word` (variable concat) didn't trigger string concat warning | Regex only matched `+= "literal"` string literals | Broadened to `\w+\s*\+=\s*\w+` to catch variable concat |

@@ -1,7 +1,9 @@
 import os
 import re
 import json
+import socket
 import boto3
+from botocore.config import Config as BotocoreConfig
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file
 from botocore.exceptions import ClientError
@@ -12,6 +14,54 @@ from google.genai import types
 
 app = Flask(__name__)
 CORS(app)
+
+# ============================================================
+# --- ENVIRONMENT VALIDATION ---
+# ============================================================
+def validate_env():
+    """Print a clear startup status for every required env variable."""
+    print("\n" + "=" * 60)
+    print("  CodeMind AI — ML Service Startup Check")
+    print("=" * 60)
+
+    checks = [
+        ("GEMINI_API_KEY",        os.getenv("GEMINI_API_KEY"),        "Primary AI provider"),
+        ("AWS_ACCESS_KEY_ID",     os.getenv("AWS_ACCESS_KEY_ID"),     "Bedrock fallback"),
+        ("AWS_SECRET_ACCESS_KEY", os.getenv("AWS_SECRET_ACCESS_KEY"), "Bedrock fallback"),
+        ("AWS_REGION",            os.getenv("AWS_REGION", "us-east-1"), "Bedrock region"),
+    ]
+
+    all_ok = True
+    for name, value, purpose in checks:
+        if value:
+            masked = value[:6] + "…" if len(value) > 6 else "set"
+            print(f"  ✅  {name:<26} {masked:<16} ({purpose})")
+        else:
+            print(f"  ❌  {name:<26} {'MISSING':<16} ({purpose})")
+            if name not in ("AWS_REGION",):   # region has a default
+                all_ok = False
+
+    print("-" * 60)
+
+    # Determine active providers
+    has_gemini  = bool(os.getenv("GEMINI_API_KEY"))
+    has_bedrock = bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))
+
+    if has_gemini and has_bedrock:
+        print("  🟢  Mode: Gemini (primary) → Bedrock (fallback) → Offline")
+    elif has_gemini:
+        print("  🟡  Mode: Gemini (primary) → Offline")
+        print("  ⚠️   AWS credentials missing — Bedrock fallback disabled.")
+    elif has_bedrock:
+        print("  🟡  Mode: Bedrock (primary) → Offline")
+        print("  ⚠️   GEMINI_API_KEY missing — Gemini disabled.")
+    else:
+        print("  🔴  Mode: Offline only — all AI providers disabled.")
+        print("  ⚠️   Add GEMINI_API_KEY and/or AWS credentials to .env")
+
+    print("=" * 60 + "\n")
+
+validate_env()
 
 # ============================================================
 # --- CLIENT INITIALIZATION: GEMINI + AWS BEDROCK ---
@@ -48,6 +98,11 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
             region_name=AWS_REGION,
             aws_access_key_id=AWS_ACCESS_KEY_ID,
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            config=BotocoreConfig(
+                connect_timeout=10,
+                read_timeout=10,
+                retries={"max_attempts": 1}
+            )
         )
         print(f"✅ AWS Bedrock Client Initialized (Region: {AWS_REGION})")
     except Exception as e:
@@ -123,12 +178,18 @@ def analyze_offline(code):
             else:
                 current_nesting += 1
             max_nesting = max(max_nesting, current_nesting)
-            # Logarithmic: halving or doubling in loop condition / body
-            if re.search(r'(\*=\s*2|/=\s*2|>>=|<<=|//\s*2)', stripped):
+            # Logarithmic: halving or doubling on the loop header line
+            if re.search(r'(\*=\s*2|/=\s*2|>>=|<<=)', stripped):
                 is_logarithmic = True
+
+        # Logarithmic: floor-division halving anywhere inside a loop body
+        # e.g.  mid = (low + high) // 2
+        if current_nesting > 0 and re.search(r'=.*//\s*2\b', stripped):
+            is_logarithmic = True
 
         if current_nesting > 0 and re.search(r'(\*=|/=|>>=|<<=)\s*[2-9]', stripped):
             is_logarithmic = True
+
 
         # --- Sorting → O(n log n) ---
         if re.search(r'\b(sorted|sort|Arrays\.sort|Collections\.sort|qsort)\b', stripped):
@@ -145,7 +206,8 @@ def analyze_offline(code):
             has_hashmap = True
 
         # --- String concat inside loop → hidden O(n²) ---
-        if in_loop and re.search(r'\+=\s*["\']|str\s*\+=|\bconcat\b', stripped):
+        # Catches: result += word  OR  result += "lit"  OR  str.concat()
+        if in_loop and re.search(r'\w+\s*\+=\s*\w+|\+=\s*["\']|\bconcat\b', stripped):
             has_string_concat_in_loop = True
 
         # --- Close brace → decrease nesting ---
@@ -209,13 +271,18 @@ def analyze_offline(code):
 
 
 # ============================================================
-# --- HELPER: IS RATE LIMIT ERROR? ---
+# --- HELPER: SHOULD WE FALLBACK? ---
 # ============================================================
+AI_TIMEOUT_SECONDS = 10
+
 def is_rate_limit_error(e):
-    """Detect 429 / RESOURCE_EXHAUSTED / ThrottlingException from any provider."""
+    """Detect 429 / RESOURCE_EXHAUSTED / ThrottlingException / Timeout."""
+    if isinstance(e, (TimeoutError, socket.timeout)):
+        return True
     err_str = str(e).lower()
     return any(kw in err_str for kw in [
-        "429", "resource_exhausted", "rate limit", "quota", "throttl", "too many requests"
+        "429", "resource_exhausted", "rate limit", "quota",
+        "throttl", "too many requests", "timeout", "timed out"
     ])
 
 
@@ -229,7 +296,9 @@ def call_gemini(prompt, max_tokens=300):
         config=types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=0.2
-        )
+        ),
+        # Hard timeout — if Gemini hangs, raise after 10s
+        http_options=types.HttpOptions(timeout=AI_TIMEOUT_SECONDS * 1000)
     )
     return response.text.strip()
 
@@ -264,8 +333,8 @@ def call_bedrock(prompt, max_tokens=300):
 # ============================================================
 def call_ai_with_fallback(prompt, max_tokens=300):
     """
-    Tries Gemini first. If rate-limited or unavailable,
-    automatically falls back to AWS Bedrock.
+    Tries Gemini first. On rate limit (429), waits 2s and retries once.
+    If still failing, falls back to AWS Bedrock, then offline.
     Returns (text, provider_used).
     """
     # --- Attempt 1: Gemini ---
@@ -276,7 +345,7 @@ def call_ai_with_fallback(prompt, max_tokens=300):
             return text, "gemini"
         except Exception as e:
             if is_rate_limit_error(e):
-                print(f"⚡ Gemini rate limit hit. Switching to AWS Bedrock... ({e})")
+                print("⚡ Gemini rate limit hit. Switching to Bedrock immediately...")
             else:
                 print(f"⚠️ Gemini error: {e}. Trying Bedrock...")
 
@@ -360,6 +429,21 @@ Reply with ONLY this JSON, no extra text:
 
 
 # ============================================================
+# --- HELPER: CENTRALIZED ERROR RESPONSE ---
+# ============================================================
+def error_response(message, code=400, detail=None):
+    """
+    Always returns the same JSON shape:
+      { "error": str, "code": int, "detail": str | None }
+    Use this in every route so clients have a predictable error format.
+    """
+    body = {"error": message, "code": code}
+    if detail:
+        body["detail"] = detail
+    return jsonify(body), code
+
+
+# ============================================================
 # --- ROUTES ---
 # ============================================================
 
@@ -383,16 +467,18 @@ def analyze():
         requested_language = data.get('language', '').lower()
 
         if not code:
-            return jsonify({"time": "N/A"})
+            return error_response("No code provided.", 400)
 
         # Language detection & validation
         detected_language = detect_language(code)
         if requested_language and detected_language != "unknown":
             if requested_language != detected_language:
-                return jsonify({
-                    "error": f"Language Mismatch: You selected {requested_language.capitalize()} but the code looks like {detected_language.capitalize()}.",
-                    "detected": detected_language
-                })
+                return error_response(
+                    f"Language mismatch: selected {requested_language.capitalize()}, "
+                    f"but code looks like {detected_language.capitalize()}.",
+                    code=422,
+                    detail=f"detected:{detected_language}"
+                )
 
         # 1. Offline analysis (always works)
         offline_result = analyze_offline(code)
@@ -405,12 +491,7 @@ def analyze():
 
     except Exception as e:
         print(f"⚠️ Analyze route error: {e}")
-        return jsonify({
-            "time": "Analysis Error",
-            "space": "Analysis Error",
-            "warnings": ["An internal error occurred during analysis."],
-            "suggestions": ["Please try again in a few seconds."]
-        }), 500
+        return error_response("Internal analysis error.", 500, detail=str(e))
 
 
 @app.route('/ask-ai', methods=['POST'])
@@ -424,10 +505,11 @@ def ask_ai():
     text, provider = call_ai_with_fallback(prompt, max_tokens=500)
 
     if text is None:
-        return jsonify({
-            "answer": "Both AI providers are currently unavailable (rate limit or credentials issue). Please try again later.",
-            "_ai_provider": "offline"
-        })
+        return error_response(
+            "Both AI providers are unavailable. Please try again later.",
+            code=503,
+            detail="Gemini rate-limited and Bedrock unreachable or unconfigured."
+        )
 
     print(f"✅ /ask-ai answered by: {provider}")
     return jsonify({

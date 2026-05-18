@@ -1,8 +1,10 @@
 import React from 'react';
+import SkeletonLoader from './SkeletonLoader';
 
 function ResultPanel({ result, loading }) {
-  if (loading) return <div style={{ textAlign: "center", marginTop: "50px", color: "var(--primary)" }}>Calculating...</div>;
+  if (loading) return <SkeletonLoader />;
   if (!result) return <div style={{ textAlign: "center", marginTop: "50px", color: "var(--text-dim)" }}>Ready to analyze</div>;
+
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>

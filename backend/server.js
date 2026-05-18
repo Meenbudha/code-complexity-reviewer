@@ -3,7 +3,8 @@ require("dotenv").config(); // Load .env file
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
-const mongoose = require("mongoose"); // 1. Import Mongoose
+const crypto = require("crypto");          // built-in — no install needed
+const mongoose = require("mongoose");
 
 // App initialization
 const app = express();
@@ -24,13 +25,19 @@ mongoose.connect(dbURI)
 
 // Define Schema
 const AnalysisSchema = new mongoose.Schema({
-  code: String,
-  language: String,
-  result: Object, // Stores complexity, warnings, etc.
+  code:      String,
+  language:  String,
+  result:    Object,             // Stores complexity, warnings, etc.
+  codeHash:  { type: String, index: true }, // MD5 hash for cache lookup
   timestamp: { type: Date, default: Date.now }
 });
 
 const Analysis = mongoose.model("Analysis", AnalysisSchema);
+
+// Helper: MD5 hash of trimmed code
+function hashCode(code) {
+  return crypto.createHash("md5").update(code.trim()).digest("hex");
+}
 
 //  Routes
 
@@ -43,36 +50,35 @@ app.get("/", (req, res) => {
 app.post("/analyze", async (req, res) => {
   try {
     const { code, language } = req.body;
-    
-    // Call ML Service
+    const codeHash = hashCode(code);
+
+    // ── Cache lookup ─────────────────────────────────────────────────
+    const cached = await Analysis.findOne({ codeHash }).sort({ timestamp: -1 });
+    if (cached) {
+      console.log(`⚡ Cache HIT  [${codeHash.slice(0, 8)}…] — skipping AI call`);
+      return res.json({ ...cached.result, _id: cached._id, _cached: true });
+    }
+    console.log(`🔍 Cache MISS [${codeHash.slice(0, 8)}…] — calling ML service`);
+
+    // ── Call ML Service ───────────────────────────────────────────────
     const response = await axios.post(
       `${ML_SERVICE_URL}/analyze`,
       { code, language },
       {
-        headers: {
-          "Content-Type": "application/json"
-        },
-        timeout: 40000 // INCREASED: Gemini AI often takes 5-15 seconds!
+        headers: { "Content-Type": "application/json" },
+        timeout: 40000
       }
     );
 
     const resultData = response.data;
 
-    // Save result to MongoDB
-    const newAnalysis = new Analysis({
-      code,
-      language,
-      result: resultData
-    });
-    
-    await newAnalysis.save(); // Save to DB
+    // ── Save result + hash to MongoDB ─────────────────────────────────
+    const newAnalysis = new Analysis({ code, language, result: resultData, codeHash });
+    await newAnalysis.save();
 
-    // Send back result + the new DB ID
-    res.json({ ...resultData, _id: newAnalysis._id });
+    res.json({ ...resultData, _id: newAnalysis._id, _cached: false });
 
-  } 
-  catch (error) {
-
+  } catch (error) {
     if (error.code === "ECONNABORTED") {
       return res.status(504).json({
         time: "Timeout",
@@ -81,9 +87,7 @@ app.post("/analyze", async (req, res) => {
         suggestions: ["Please try again in a few seconds. The AI might be under heavy load."]
       });
     }
-
     console.error("Error connecting to ML Service:", error.message);
-
     res.status(500).json({
       time: "Error",
       space: "Error",
