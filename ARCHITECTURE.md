@@ -725,19 +725,32 @@ Runs all 3 CI jobs inline, then if all pass, triggers Render deploy hooks for al
 
 ### 10.4 GitHub Secrets Required
 
-Go to: **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**
+> ⚠️ **IMPORTANT:** All sensitive values MUST go in the **Secrets** tab — NOT the Variables tab.
+> Secrets are encrypted and show as `***` in logs. Variables are visible in plain text.
+
+Go to: **GitHub repo → Settings → Secrets and variables → Actions → Secrets tab → New repository secret**
+
+#### Secrets (sensitive — always encrypted)
 
 | Secret Name | Value | Used In |
 |---|---|---|
-| `REACT_APP_API_URL` | Your backend Render URL | `frontend.yml`, `deploy.yml` |
-| `RENDER_DEPLOY_HOOK_FRONTEND` | Render webhook for frontend service | `deploy.yml` |
-| `RENDER_DEPLOY_HOOK_BACKEND` | Render webhook for backend service | `deploy.yml` |
-| `RENDER_DEPLOY_HOOK_ML` | Render webhook for ML service | `deploy.yml` |
+| `GEMINI_API_KEY` | Google Gemini API key | `deploy.yml` (ML service) |
+| `AWS_ACCESS_KEY_ID` | AWS IAM access key | `deploy.yml` (ML service) |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key | `deploy.yml` (ML service) |
+| `RENDER_DEPLOY_HOOK_FRONTEND` | Render webhook URL for frontend | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_BACKEND` | Render webhook URL for backend | `deploy.yml` |
+| `RENDER_DEPLOY_HOOK_ML` | Render webhook URL for ML service | `deploy.yml` |
+
+#### Variables (non-sensitive — visible in plain text)
+
+| Variable Name | Value | Used In |
+|---|---|---|
+| `AWS_REGION` | `us-east-1` | `deploy.yml` |
 
 **How to get a Render deploy hook URL:**
 1. Go to [render.com](https://render.com) → your service
 2. **Settings** → scroll to **Deploy Hook**
-3. Copy the URL → paste as GitHub secret
+3. Copy the URL → paste as a GitHub **Secret** (not Variable)
 
 ---
 
@@ -761,13 +774,47 @@ These badges show ✅ green (passing) or ❌ red (failing) in real time on the G
 **Check pipeline status:**
 → `https://github.com/Meenbudha/code-complexity-reviewer/actions`
 
-**If a job fails:**
-1. Click the red ❌ run in the Actions tab
-2. Click the failing job name
-3. Expand the failing step to read the log
-4. Fix the issue locally, push again — pipeline re-runs automatically
+**Re-run a failed pipeline without a new commit:**
+1. Go to the Actions tab
+2. Click the red ❌ run
+3. Top-right → click **"Re-run all jobs"**
+
+**Trigger the pipeline with an empty commit (no file changes needed):**
+```bash
+git commit --allow-empty -m "Trigger CI/CD pipeline"
+git push origin main
+```
+
+**If a deploy job is skipped (secret not set):**
+The deploy step prints a warning and exits cleanly (green ✅) instead of failing:
+```
+⚠️ RENDER_DEPLOY_HOOK_FRONTEND secret not set — skipping deploy.
+   Add it: GitHub repo → Settings → Secrets → Actions → New secret
+```
 
 **Key design decisions:**
 - `deploy.yml` uses `needs: [frontend-ci, backend-ci, ml-service-ci]` so deploys **never happen if any test fails**
+- Deploy hooks use a `if [ -z "$HOOK" ]` bash guard — missing secrets skip gracefully instead of crashing
 - Offline pytest tests require **zero secrets** — they test pure Python logic only
 - `--legacy-peer-deps` is used instead of `npm ci` because React 19 has a peer dependency conflict with `react-scripts 5`
+
+---
+
+### 10.7 Secrets vs Variables — Critical Distinction
+
+This is a common mistake when setting up GitHub Actions for the first time.
+
+| | **Secrets** tab | **Variables** tab |
+|---|---|---|
+| **Visibility in logs** | Masked as `***` | Shown in plain text |
+| **Use for** | API keys, passwords, webhook URLs | App names, region, feature flags |
+| **Risk if wrong** | N/A | Sensitive data exposed to anyone with repo access |
+| **Example** | `GEMINI_API_KEY`, `AWS_SECRET_ACCESS_KEY` | `AWS_REGION` |
+
+**Bug encountered:** All secrets were initially added to the **Variables** tab, which exposed `AWS_SECRET_ACCESS_KEY` and `GEMINI_API_KEY` in plain text in workflow logs.
+
+**Fix applied:**
+1. Deleted all entries from the Variables tab
+2. Re-added sensitive keys under the **Secrets** tab
+3. Kept only `AWS_REGION` in Variables (safe — not sensitive)
+4. Re-ran the pipeline → all deploy hooks fired correctly ✅
