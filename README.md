@@ -1,88 +1,227 @@
-Code Complexity Reviewer: GitHub Setup Guide
+# 🧠 CodeMind AI — Code Complexity Reviewer
 
-Follow these steps to initialize your project with Git and push it to GitHub.
+<div align="center">
 
-Step 1: Initialize Git
+[![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Visit%20App-6C63FF?style=for-the-badge)](https://github.com/Meenbudha/code-complexity-reviewer)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/Meenbudha/code-complexity-reviewer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python)](https://python.org)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://reactjs.org)
 
-Open your terminal in the root folder of your project (the parent folder containing frontend, backend, and ml-service).
+**AI-powered code analysis with multi-tier intelligence — Gemini → AWS Bedrock → Offline fallback.**
 
+</div>
+
+---
+
+## 🌐 Live Link
+
+> **🔗 [https://github.com/Meenbudha/code-complexity-reviewer](https://github.com/Meenbudha/code-complexity-reviewer)**
+
+> [!NOTE]
+> Clone the repo and run it locally following the [Quick Start](#-quick-start) guide below. A hosted deployment link will be added here once the app is deployed.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---|---|
+| 🤖 **Multi-Tier AI Router** | Cascades through Gemini → AWS Bedrock → Offline fallback for 100% uptime |
+| ⚡ **Request Caching** | MD5-based caching eliminates redundant API calls |
+| 📊 **Complexity Analysis** | Cyclomatic complexity, Big-O estimation, maintainability scoring |
+| 💬 **AI Chat Assistant** | Ask follow-up questions about your code analysis |
+| 🦴 **Skeleton Loaders** | Smooth loading states for a premium UX |
+| 🛡️ **Robust Error Handling** | Standardized error responses with graceful degradation |
+| 🧪 **Unit Test Coverage** | Pytest suite covering offline analysis and API routes |
+
+---
+
+## 🏗️ Architecture
+
+```
+CodeMind AI
+├── frontend/          # React 18 + custom CSS dark UI
+│   └── src/
+│       ├── components/
+│       │   ├── CodeEditor.js       # Monaco-style code input
+│       │   ├── ResultPanel.js      # Analysis report display
+│       │   └── SkeletonLoader.js   # Loading placeholders
+│       └── index.css
+├── ml-service/        # Python Flask — AI orchestration layer
+│   ├── app.py         # 3-tier fallback router (Gemini → Bedrock → Offline)
+│   ├── pytest.ini
+│   └── tests/
+│       └── test_analyze_offline.py
+└── backend/           # Node.js/Express — API gateway (optional)
+```
+
+### Intelligence Router Flow
+
+```
+User Request
+     │
+     ▼
+┌─────────────┐    ✅ success    ┌──────────────┐
+│  Google     │──────────────►  │   Response   │
+│  Gemini     │                 └──────────────┘
+└─────────────┘
+     │ ❌ timeout/error
+     ▼
+┌─────────────┐    ✅ success    ┌──────────────┐
+│    AWS      │──────────────►  │   Response   │
+│  Bedrock    │                 └──────────────┘
+└─────────────┘
+     │ ❌ timeout/error
+     ▼
+┌─────────────┐
+│   Offline   │──────────────►  Static analysis fallback
+│  Analyzer   │
+└─────────────┘
+```
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** v18+
+- **Python** 3.10+
+- **Git**
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Meenbudha/code-complexity-reviewer.git
+cd code-complexity-reviewer
+```
+
+### 2. Set Up the ML Service (Flask)
+
+```bash
+cd ml-service
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+Create a `.env` file in `ml-service/`:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_DEFAULT_REGION=us-east-1
+```
+
+Start the service:
+
+```bash
+python app.py
+```
+
+### 3. Set Up the Frontend (React)
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+
+---
+
+## 🧪 Running Tests
+
+```bash
+cd ml-service
+pip install pytest
+pytest
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18, Vanilla CSS, Custom Dark Theme |
+| **ML Service** | Python, Flask, Google Gemini API, AWS Bedrock (boto3) |
+| **Backend** | Node.js, Express |
+| **AI Models** | Gemini 1.5 Flash, Amazon Titan / Claude (Bedrock) |
+| **Testing** | Pytest |
+| **Version Control** | Git + GitHub |
+
+---
+
+## 📁 Git Setup Reference
+
+<details>
+<summary>First-time GitHub setup steps</summary>
+
+```bash
+# Initialize (if starting fresh)
 git init
 
-
-Step 2: Create a .gitignore File
-
-It is critical to exclude heavy dependency folders and sensitive files. Create a file named .gitignore in your root directory and paste the following:
-
-# Node modules
-node_modules/
-frontend/node_modules/
-backend/node_modules/
-
-# Python virtual environments
-venv/
-env/
-
-# Environment variables
-.env
-
-# IDE files
-.vscode/
-.idea/
-.DS_Store
-
-
-Step 3: Local Commit
-
-Stage your files and create your first local snapshot.
-
+# Stage and commit
 git add .
 git commit -m "Initial commit: Code Complexity Reviewer structure"
 
-
-Step 4: Create a Repository on GitHub
-
-Log in to GitHub.com.
-
-Click the + icon in the top right → New repository.
-
-Name: code-complexity-reviewer
-
-Visibility: Public or Private.
-
-Initialize: Do not check "Initialize with README" or "Add .gitignore" (you have already done this locally).
-
-Click Create repository.
-
-Step 5: Connect and Push
-
-Copy the commands from the GitHub instruction page (under the "push an existing repository" section) or use the template below:
-
-# Set the default branch to main
+# Rename branch
 git branch -M main
 
-# Link your local folder to GitHub (Replace YOUR-USERNAME with your actual username)
-git remote add origin [https://github.com/YOUR-USERNAME/code-complexity-reviewer.git](https://github.com/YOUR-USERNAME/code-complexity-reviewer.git)
+# Link to GitHub (replace YOUR-USERNAME)
+git remote add origin https://github.com/YOUR-USERNAME/code-complexity-reviewer.git
 
-# Push your code
+# Push
 git push -u origin main
+```
 
+**Key `.gitignore` entries:**
 
-Summary Table of Commands
+```gitignore
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+venv/
+env/
+.env
+.vscode/
+.DS_Store
+```
 
-Action                  Command
+</details>
 
-Initialize              git init
+---
 
-Stage Files             git add .
+## 🗺️ Roadmap
 
-Commit                  git commit -m "First commit"
+- [ ] Deploy frontend to Vercel / Netlify
+- [ ] Deploy ML service to Railway / Render
+- [ ] Add live hosted demo URL
+- [ ] Support for more languages (Go, Rust, Java)
+- [ ] VS Code extension
 
-Rename Branch           git branch -M main
+---
 
-Remote Link             git remote add origin https://github.com/USER/REPO.git
+## 📄 License
 
-Push                    git push -u origin main
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
-Step 6: Verify
+---
 
-Refresh your GitHub repository page. You should now see your frontend, backend, and ml-service directories properly organized.
+<div align="center">
+
+Built with ❤️ by [Meenbudha](https://github.com/Meenbudha)
+
+⭐ **Star this repo if you find it useful!**
+
+</div>
