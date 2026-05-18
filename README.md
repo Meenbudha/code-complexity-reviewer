@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Visit%20App-6C63FF?style=for-the-badge)](https://github.com/Meenbudha/code-complexity-reviewer)
+[![Live Demo](https://img.shields.io/badge/🚀%20Live%20Demo-Visit%20App-6C63FF?style=for-the-badge)](https://codemind-frontend.onrender.com)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/Meenbudha/code-complexity-reviewer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python)](https://python.org)
@@ -16,10 +16,10 @@
 
 ## 🌐 Live Link
 
-> **🔗 [https://github.com/Meenbudha/code-complexity-reviewer](https://github.com/Meenbudha/code-complexity-reviewer)**
+> ### 🔗 **[https://codemind-frontend.onrender.com](https://codemind-frontend.onrender.com)**
 
-> [!NOTE]
-> Clone the repo and run it locally following the [Quick Start](#-quick-start) guide below. A hosted deployment link will be added here once the app is deployed.
+> [!TIP]
+> Click the link above to open the live app hosted on Render. No installation required!
 
 ---
 
