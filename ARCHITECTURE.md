@@ -105,7 +105,9 @@ This is the root component that holds all the application state and orchestrates
 | `language` | string | Selected language: `"c"`, `"java"`, or `"python"` |
 | `result` | object | The analysis result `{ time, space, warnings, suggestions }` |
 | `loading` | boolean | `true` while waiting for the API response — triggers SkeletonLoader |
+| `isHistoryLoading` | boolean | `true` while fetching history from MongoDB — triggers sidebar skeleton |
 | `hasAnalyzed` | boolean | Triggers the layout shift (editor + report side-by-side) |
+| `isWarmedUp` | boolean | `false` until WarmupScreen confirms all services are online |
 | `history` | array | List of past analyses loaded from MongoDB |
 | `darkMode` | boolean | `true` = dark theme, `false` = light theme |
 | `topSectionHeight` | number | Height (px) of the editor area, draggable by user |
@@ -134,6 +136,7 @@ This is the root component that holds all the application state and orchestrates
 - Each card shows the language, timestamp, and a short summary.
 - Clicking a card calls `loadFromHistory()` in `App.js`.
 - Has a **"New Analysis"** button that calls `resetAnalysis()`.
+- **Skeleton loader:** While `isHistoryLoading === true`, shows 4 shimmer rows (circular icon bone + text bone) instead of the real list. Once MongoDB responds, the real history replaces the skeleton. Uses the same `.skeleton-bone` CSS class as `SkeletonLoader.js`.
 
 #### `CodeEditor.js`
 - A styled `<textarea>` element using the `'Fira Code'` monospace font at `13px`.
@@ -227,7 +230,27 @@ The Node.js server is an **API Gateway**. Its four jobs are:
 3. **Persist** — Save results + MD5 hash to MongoDB.
 4. **Serve** — Return analysis history to the frontend.
 
-### 4.1 Request Caching (MD5)
+### 4.1 Middleware Stack
+
+```js
+app.use(helmet({ contentSecurityPolicy: false })); // 15 security HTTP headers
+app.use(cors());                                    // Allow frontend origin
+app.use(express.json());                            // Parse JSON bodies
+```
+
+**Helmet** sets the following headers automatically:
+
+| Header | Purpose |
+|---|---|
+| `X-Frame-Options: SAMEORIGIN` | Prevents clickjacking (iframe embedding) |
+| `X-Content-Type-Options: nosniff` | Prevents MIME-type sniffing attacks |
+| `Strict-Transport-Security` | Forces HTTPS on all future requests |
+| `X-DNS-Prefetch-Control: off` | Disables DNS prefetching |
+| `Referrer-Policy: no-referrer` | Stops referrer leaking |
+
+`contentSecurityPolicy: false` is set to prevent Helmet from blocking the frontend's connection to the API.
+
+### 4.2 Request Caching (MD5)
 
 Every `/analyze` request is hashed before calling the ML service:
 
@@ -261,7 +284,7 @@ Terminal logs show cache activity clearly:
 🔍 Cache MISS [a3f8c1d2…] — calling ML service
 ```
 
-### 4.2 API Endpoints
+### 4.3 API Endpoints
 
 #### `GET /`
 Health check. Returns a simple text response confirming the server is running.
@@ -288,7 +311,7 @@ Health check. Returns a simple text response confirming the server is running.
 2. Returns the AI's text answer + `_ai_provider` back to the `AiAssistant` component.
 3. Handles timeout gracefully with a user-friendly error message.
 
-### 4.3 MongoDB Schema (`Analysis`)
+### 4.4 MongoDB Schema (`Analysis`)
 
 ```js
 {
@@ -490,9 +513,29 @@ Health check. Returns:
 
 #### `POST /ask-ai`
 1. Receives `{ code, question }` from the backend proxy.
-2. Builds a simple conversational prompt: `"Explain simply: {question}\nCode:\n{code}"`.
-3. Routes through the same Gemini → Bedrock → Offline fallback chain.
-4. Returns `{ answer, _ai_provider }` or `error_response(503)` if all providers fail.
+2. **Validates input:** returns `400` if question is empty or exceeds 500 characters.
+3. Builds a **structured prompt** with role + code context + format instructions:
+   ```python
+   prompt = f"""You are a senior software engineer helping a developer understand their code.
+
+   Code being analyzed:
+   ```
+   {code[:3000]}
+   ```
+
+   Developer's question: {question}
+
+   Instructions:
+   - Answer in 2-4 sentences maximum
+   - Be specific to the code shown above (if provided)
+   - Use plain English — avoid unnecessary jargon
+   - If the question is about complexity, mention Big-O notation
+   - If you suggest an improvement, show a one-line code example
+   - Do NOT repeat the question back"""
+   ```
+4. Code is capped at **3000 characters** to prevent token overflow on AI providers.
+5. Routes through the same Gemini → Bedrock → Offline fallback chain.
+6. Returns `{ answer, _ai_provider }` or `error_response(503)` if all providers fail.
 
 ---
 
@@ -885,6 +928,26 @@ All three services are deployed on **[Render](https://render.com)** (free tier).
 | **Start Command** | `gunicorn app:app --workers 2 --timeout 60 --bind 0.0.0.0:$PORT` |
 | **Service Type** | Web Service |
 
+**Why gunicorn instead of `python app.py`:**
+
+Flask's built-in dev server is **single-threaded** — it can only handle one request at a time. Under concurrent load (e.g. two users analyzing at the same time), the second request queues behind the first.
+
+Gunicorn spawns **2 worker processes**, each handling requests independently:
+```
+gunicorn app:app --workers 2 --timeout 60 --bind 0.0.0.0:$PORT
+                  ^^^^^^^^                  ^^^^^^^^^^^^^^^^^^^^^^
+                  2 parallel workers        uses Render's assigned port
+```
+
+**`--timeout 60`** prevents gunicorn from killing long-running AI requests (AI calls can take 3–15s).
+
+**Procfile** (`ml-service/Procfile`) contains the raw start command:
+```
+gunicorn app:app --workers 2 --timeout 60 --bind 0.0.0.0:$PORT
+```
+
+> ⚠️ **Render does NOT use Procfile format** (`web: command`). It runs the Start Command as a raw shell command. The `web:` prefix is Heroku syntax and causes `bash: web:: command not found`. Always set the Start Command directly in Render → service → Settings.
+
 **Environment Variables:**
 
 | Variable | Value |
@@ -932,6 +995,37 @@ All secrets stored at: **GitHub repo → Settings → Secrets and variables → 
 | Variable Name | Value |
 |---|---|
 | `AWS_REGION` | `us-east-1` |
+
+---
+
+### 11.5 Render Rollback
+
+Render keeps a history of all past successful deployments. The **Rollback** button appears on every historical deploy entry in the **Deploys** tab.
+
+```
+Render → your service → Deploys tab
+
+✅ Deploy #5  (current/live)
+✅ Deploy #4                     [Rollback]  ← visible on every past deploy
+✅ Deploy #3                     [Rollback]
+✅ Deploy #2                     [Rollback]
+```
+
+**The Rollback button being visible is normal — it does NOT indicate a problem.**
+
+| Situation | Action |
+|---|---|
+| ✅ Green deploy + Rollback button | Everything is fine. Button is just available. |
+| ❌ Red failed deploy | Check logs. Fix code or env vars. Do NOT rollback unless previous version worked. |
+| New deploy breaks production | Click Rollback to instantly revert to previous working build |
+
+**When to use Rollback:**
+- A push broke the live app and you need to restore it immediately
+- Buying time while debugging a regression
+
+**When NOT to use Rollback:**
+- The issue is a missing environment variable — rollback won't help; fix the env var
+- First deployment (no previous version to roll back to)
 
 ---
 
