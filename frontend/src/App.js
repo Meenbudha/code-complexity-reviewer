@@ -27,6 +27,7 @@ function App() {
   // Data State
   const [history, setHistory] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true); // skeleton in sidebar
   
   // Layout Logic
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
@@ -36,6 +37,7 @@ function App() {
 
   // --- 1. Load History from MongoDB on Startup ---
   useEffect(() => {
+    setIsHistoryLoading(true);
     fetch(`${BACKEND_URL}/history`)
       .then(res => res.json())
       .then(data => {
@@ -49,7 +51,8 @@ function App() {
         }));
         setHistory(formattedHistory);
       })
-      .catch(err => console.error("Failed to load history:", err));
+      .catch(err => console.error("Failed to load history:", err))
+      .finally(() => setIsHistoryLoading(false));
   }, []);
 
   // --- 3. Resize Logic ---
@@ -178,7 +181,8 @@ function App() {
         onSelect={loadFromHistory}
         onNew={resetAnalysis}
         darkMode={darkMode}
-        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        isLoading={isHistoryLoading}
       />
 
       <div className="main-content">

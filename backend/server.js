@@ -2,6 +2,7 @@
 require("dotenv").config(); // Load .env file
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const axios = require("axios");
 const crypto = require("crypto");          // built-in — no install needed
 const mongoose = require("mongoose");
@@ -12,8 +13,10 @@ const PORT = process.env.PORT || 5000;
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 //  Middlewares
-app.use(cors()); // Allow Frontend (Port 3000) to access this
+app.use(helmet({ contentSecurityPolicy: false })); // Security headers (X-Frame-Options, HSTS, etc.)
+app.use(cors()); // Allow Frontend to access this API
 app.use(express.json());
+
 
 //  Database Connection
 // Check for Render's environment variable first, otherwise use local database

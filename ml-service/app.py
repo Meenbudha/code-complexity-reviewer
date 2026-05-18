@@ -497,10 +497,29 @@ def analyze():
 @app.route('/ask-ai', methods=['POST'])
 def ask_ai():
     data = request.json
-    question = data.get('question', '')
-    code = data.get('code', '')
+    question = data.get('question', '').strip()
+    code = data.get('code', '').strip()
 
-    prompt = f"Explain simply: {question}\nCode:\n{code}"
+    # Input validation
+    if not question:
+        return error_response("Question cannot be empty.", 400)
+    if len(question) > 500:
+        return error_response("Question too long (max 500 characters).", 400)
+
+    # Build structured prompt with role + format instructions
+    code_section = f"\n\nCode being analyzed:\n```\n{code[:3000]}\n```" if code else ""
+
+    prompt = f"""You are a senior software engineer helping a developer understand their code.{code_section}
+
+Developer's question: {question}
+
+Instructions:
+- Answer in 2-4 sentences maximum
+- Be specific to the code shown above (if provided)
+- Use plain English — avoid unnecessary jargon
+- If the question is about complexity, mention the Big-O notation
+- If you suggest an improvement, show a one-line code example
+- Do NOT repeat the question back"""
 
     text, provider = call_ai_with_fallback(prompt, max_tokens=500)
 
@@ -516,6 +535,8 @@ def ask_ai():
         "answer": text,
         "_ai_provider": provider
     })
+
+
 
 
 if __name__ == '__main__':
