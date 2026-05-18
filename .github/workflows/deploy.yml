@@ -25,7 +25,7 @@ jobs:
 
       - name: 📦 Install dependencies
         working-directory: ./frontend
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: 🏗️ Build React app
         working-directory: ./frontend
@@ -85,7 +85,7 @@ jobs:
 
       - name: 🧪 Run offline tests
         working-directory: ./ml-service
-        run: pytest tests/test_analyze_offline.py -v --tb=short
+        run: python -m pytest tests/test_analyze_offline.py -v --tb=short
 
   # ──────────────────────────────────────────────────────────────────
   # JOB 4: Deploy Frontend → Render (all 3 CI jobs must pass)

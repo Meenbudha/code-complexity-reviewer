@@ -33,7 +33,7 @@ jobs:
 
       - name: 🧪 Run Pytest (offline tests only — no API keys needed)
         working-directory: ./ml-service
-        run: pytest tests/test_analyze_offline.py -v --tb=short
+        run: python -m pytest tests/test_analyze_offline.py -v --tb=short
         # Note: offline tests use analyze_offline() — no Gemini/AWS keys required
         # Add secrets below if you add integration tests later
 
