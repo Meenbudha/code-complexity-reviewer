@@ -139,19 +139,20 @@ This is the root component that holds all the application state and orchestrates
 - **Skeleton loader:** While `isHistoryLoading === true`, shows 4 shimmer rows (circular icon bone + text bone) instead of the real list. Once MongoDB responds, the real history replaces the skeleton. Uses the same `.skeleton-bone` CSS class as `SkeletonLoader.js`.
 
 #### `CodeEditor.js`
-- A styled `<textarea>` element using the `'Fira Code'` monospace font at `13px`.
+- Powered by `@monaco-editor/react` for a premium, VS Code-like editing experience.
+- Uses the `'Fira Code'` monospace font at `14px`.
+- Configured to disable semantic and syntax validation during `beforeMount` (no distracting red squiggly lines), providing clean syntax highlighting without IDE-level noise.
 - Fully controlled by React (value and onChange tied to the `code` state).
-- The `EDITOR` label in the top-left is decorative.
-- `spellCheck={false}` prevents the browser from underlining code.
 
 #### `ResultPanel.js`
 - Displays the analysis result after a successful call.
 - When `loading === true`, renders `<SkeletonLoader />` instead of real content.
 - When data arrives, displays:
   1. **TC/SC Cards:** Two side-by-side cards with colour-coded top borders (cyan for TC, violet for SC).
-  2. **Warnings & Tips:** Conditionally rendered lists. Warnings have amber left border; Tips have cyan left border.
+  2. **Warnings & Tips (Interactive Grid):** Conditionally rendered lists of actionable insights parsed from the AI. Rendered as a responsive 2-column CSS Grid.
+  3. Cards feature hover micro-interactions (translateY lift and shadow) and distinct bold headers (Red for Security/Performance, Blue for Actionable Improvements) without bullet markers. The literal "Label:" text from AI output is stripped for a cleaner look.
 
-#### `SkeletonLoader.js` *(new)*
+#### `SkeletonLoader.js`
 - A premium shimmer loading placeholder that mirrors the exact layout of `ResultPanel`.
 - Shown while `loading === true` — replaces the old plain `"Calculating..."` text.
 - Structure matches the real result panel:
@@ -168,16 +169,17 @@ This is the root component that holds all the application state and orchestrates
 - Plots points from `n=0` to `n=50` to visually show how the algorithm's runtime would scale.
 
 #### `AiAssistant.js`
-- A collapsible chat panel pinned to the bottom of the screen.
-- **Expand/Collapse:** Clicking the header toggles the `isExpanded` state.
+- A collapsible chat panel pinned to the bottom of the screen. Expanded by default (`isExpanded: true`) on page load.
+- **Claude-style Input Area:** Replaced basic input with a multi-line auto-resizing `<textarea>` (max-height 150px) that allows multi-line pasting. Uses `Enter` to send, `Shift+Enter` for newlines.
+- **Integrated Toolbar:** Features a bottom toolbar inside the input wrapper with a mockup file attachment `+` icon, a `CodeMind AI` model selector dropdown mock, and an integrated send button that only turns primary-coloured when text is typed.
+- **New Chat Control:** Header includes a `+ New Chat` button to clear the conversation history instantly.
 - **Resizable:** Has top and bottom drag handles to resize the chat window height.
 - **Chat Flow:**
-  1. User types a question and presses Enter (or clicks Send).
+  1. User types a question and presses Enter.
   2. The component immediately appends the user's message to the `history` state for instant UI feedback.
   3. It POSTs `{ code, question }` to `/ask-ai` on the Node backend.
-  4. Shows a "Thinking..." loading bubble while waiting.
-  5. Appends the AI's response to the chat history on arrival.
-- The component receives the `code` state as a prop from `App.js`, so it can always ask contextual questions about the code currently in the editor.
+  4. Shows a shimmering skeleton loader bubble while waiting.
+  5. Appends the AI's structured response (formatted via `react-markdown`) to the chat.
 
 ---
 

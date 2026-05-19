@@ -1,10 +1,49 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-function AiAssistant({ code }) {
+const CodeBlock = ({ inline, className, children, ...props }) => {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || '');
+  const codeString = String(children).replace(/\n$/, '');
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!inline && match) {
+    return (
+      <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', borderRadius: '8px', overflow: 'hidden' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          backgroundColor: '#2d2d2d', padding: '5px 15px', borderBottom: '1px solid #1e1e1e'
+        }}>
+          <span style={{ color: '#858585', fontSize: '0.75rem', fontFamily: 'monospace', textTransform: 'uppercase' }}>{match[1]}</span>
+          <button onClick={copyToClipboard} style={{
+            background: 'none', border: 'none', color: '#858585', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem'
+          }}>
+            {copied ? (
+              <><span style={{color: 'var(--primary)'}}>✓</span> Copied</>
+            ) : (
+              <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy</>
+            )}
+          </button>
+        </div>
+        <SyntaxHighlighter style={vscDarkPlus} language={match[1]} PreTag="div" customStyle={{ margin: 0, padding: '15px' }} {...props}>
+          {codeString}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+  return <code className={className} style={{backgroundColor: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '4px', color: 'var(--primary)'}} {...props}>{children}</code>;
+};function AiAssistant({ code }) {
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   
   // Updated fallback URL to match App.js fetch URL
   const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
@@ -78,7 +117,7 @@ function AiAssistant({ code }) {
     try {
       const res = await fetch(`${BACKEND_URL}/ask-ai`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, question: q })
+        body: JSON.stringify({ code, question: q, history: history.slice(-6) }) // Send last 6 messages
       });
       const data = await res.json();
       setHistory([...newHistory, { role: 'ai', text: data.answer }]);
@@ -140,7 +179,40 @@ function AiAssistant({ code }) {
             AI Assistant
           </span>
         </div>
-        <span style={{ color: "var(--text-dim)" }}>{isExpanded ? "▲" : "▼"}</span>
+        
+        <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+          {/* New Chat Button */}
+          {history.length > 0 && isExpanded && (
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                setHistory([]); 
+                setQuestion(""); 
+              }} 
+              style={{
+                backgroundColor: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text-dim)",
+                padding: "6px 12px",
+                borderRadius: "20px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--text-main)";
+                e.currentTarget.style.borderColor = "var(--text-dim)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-dim)";
+                e.currentTarget.style.borderColor = "var(--border)";
+              }}
+            >
+              + New Chat
+            </button>
+          )}
+          <span style={{ color: "var(--text-dim)" }}>{isExpanded ? "▲" : "▼"}</span>
+        </div>
       </div>
 
       {/* Chat History Area (Dynamic Height) */}
@@ -164,27 +236,47 @@ function AiAssistant({ code }) {
               color: "var(--text-main)",
               fontSize: "0.95rem",
               lineHeight: "1.5",
-              whiteSpace: "pre-wrap"
-            }}>{msg.text}</div>
+              whiteSpace: msg.role === 'user' ? "pre-wrap" : "normal"
+            }}>
+              {msg.role === 'user' ? (
+                msg.text
+              ) : (
+                <div className="markdown-body">
+                  <ReactMarkdown
+                    components={{
+                      code: CodeBlock,
+                      h3({children}) { return <h3 style={{ margin: "16px 0 8px 0", color: "var(--primary)", fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "6px" }}>{children}</h3>; },
+                      p({children}) { return <p style={{ margin: "0 0 10px 0", lineHeight: "1.6" }}>{children}</p>; },
+                      ul({children}) { return <ul style={{ margin: "10px 0", paddingLeft: "20px", lineHeight: "1.6" }}>{children}</ul>; },
+                      li({children}) { return <li style={{ marginBottom: "6px" }}>{children}</li>; },
+                      strong({children}) { return <strong style={{ color: "var(--text-hero)", fontWeight: "600" }}>{children}</strong>; }
+                    }}
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         
-        {/* --- LOADING INDICATOR --- */}
+        {/* --- PREMIUM SKELETON LOADING INDICATOR --- */}
         {loading && (
-          <div style={{ alignSelf: 'flex-start', maxWidth: "85%", margin: "10px 0" }}>
+          <div style={{ alignSelf: 'flex-start', width: "85%", margin: "10px 0" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "4px" }}>AI</div>
             <div style={{ 
               backgroundColor: "var(--bg-panel)", 
               border: "1px solid var(--border)", 
-              padding: "15px 22px", 
+              padding: "18px 22px", 
               borderRadius: "20px", 
               borderTopLeftRadius: "4px",
-              color: "var(--text-main)",
               display: "flex",
-              alignItems: "center",
-              gap: "10px"
+              flexDirection: "column",
+              gap: "12px"
             }}>
-              <span className="loader-text" style={{ fontSize: "0.95rem" }}>Thinking...</span>
+              <div className="skeleton-bone" style={{ width: "100%", height: "12px", borderRadius: "4px" }}></div>
+              <div className="skeleton-bone" style={{ width: "90%", height: "12px", borderRadius: "4px" }}></div>
+              <div className="skeleton-bone" style={{ width: "65%", height: "12px", borderRadius: "4px" }}></div>
             </div>
           </div>
         )}
@@ -192,61 +284,129 @@ function AiAssistant({ code }) {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area */}
+      {/* Input Area (Claude-style) */}
       <div style={{ 
-        padding: "20px 30px", 
+        padding: isExpanded ? "20px 30px" : "0 30px", 
+        height: isExpanded ? "auto" : "0", 
+        overflow: "hidden", 
         backgroundColor: "var(--bg-input)", 
         borderTop: isExpanded ? "1px solid var(--border)" : "none", 
         display: "flex", 
-        gap: "10px" 
+        flexDirection: "column"
       }}>
-        <input 
-          value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askAI()}
-          placeholder="Ask a question..." 
-          disabled={loading} // Disable input while loading
-          style={{ 
-            flex: 1, 
-            padding: "12px 20px", 
-            borderRadius: "50px", 
-            border: "1px solid var(--border)", 
-            backgroundColor: "var(--bg-main)", 
-            color: "var(--text-main)", 
-            outline: "none",
-            fontSize: "0.95rem",
-            opacity: loading ? 0.7 : 1
-          }} 
-        />
-        
-        {/* --- Gemini-style Loading/Send Button --- */}
-        <button 
-          onClick={askAI} 
-          disabled={loading}
-          style={{ 
-            width: "44px",
-            height: "44px",
-            padding: "0",
-            backgroundColor: loading ? "var(--bg-panel)" : "var(--secondary)", 
-            color: loading ? "var(--primary)" : "#fff", 
-            border: loading ? "1px solid var(--border)" : "none", 
-            borderRadius: "50%", 
-            cursor: loading ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.2s"
-          }}
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          backgroundColor: "var(--bg-main)",
+          border: "1px solid var(--border)",
+          borderRadius: "16px",
+          padding: "12px",
+          boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+          transition: "border-color 0.2s"
+        }}
+        onFocus={(e) => e.currentTarget.style.borderColor = "var(--text-dim)"}
+        onBlur={(e) => e.currentTarget.style.borderColor = "var(--border)"}
         >
-          {loading ? (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style={{ animation: "spin 1.5s linear infinite" }}>
-               <path d="M12 2L14.4 8.6L21 11L14.4 13.4L12 20L9.6 13.4L3 11L9.6 8.6L12 2Z" />
-            </svg>
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "2px" }}>
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          )}
-        </button>
+          <textarea 
+            value={question} 
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px';
+            }} 
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if(question.trim() && !loading) askAI();
+              }
+            }}
+            placeholder="Write a message..." 
+            disabled={loading}
+            rows={1}
+            style={{ 
+              width: "100%", 
+              backgroundColor: "transparent", 
+              color: "var(--text-main)", 
+              border: "none", 
+              outline: "none",
+              fontSize: "0.95rem",
+              resize: "none",
+              lineHeight: "1.5",
+              minHeight: "24px",
+              maxHeight: "150px",
+              overflowY: "auto",
+              fontFamily: "inherit",
+              padding: "4px 4px 8px 4px",
+              opacity: loading ? 0.7 : 1
+            }} 
+          />
+          
+          {/* Bottom Toolbar (Claude-style) */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {/* Left: Plus Icon */}
+            <div 
+              style={{ 
+                color: "var(--text-dim)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", 
+                width: "32px", height: "32px", borderRadius: "8px", transition: "background 0.2s" 
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.05)"}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </div>
+
+            {/* Right: Model Selector & Send Button */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div 
+                style={{ 
+                  color: "var(--text-dim)", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "6px", cursor: "pointer",
+                  padding: "6px 10px", borderRadius: "8px", transition: "background 0.2s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.05)"}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+              >
+                CodeMind AI 
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+
+              <button 
+                onClick={askAI} 
+                disabled={loading || !question.trim()}
+                style={{ 
+                  width: "32px",
+                  height: "32px",
+                  padding: "0",
+                  backgroundColor: (loading || !question.trim()) ? "transparent" : "var(--primary)", 
+                  color: (loading || !question.trim()) ? "var(--text-dim)" : "#000", 
+                  border: "none", 
+                  borderRadius: "8px", 
+                  cursor: (loading || !question.trim()) ? "default" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s"
+                }}
+              >
+                {loading ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style={{ animation: "spin 1.5s linear infinite" }}>
+                     <path d="M12 2L14.4 8.6L21 11L14.4 13.4L12 20L9.6 13.4L3 11L9.6 8.6L12 2Z" />
+                  </svg>
+                ) : (
+                  // Send Arrow matching Claude/modern aesthetic
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "1px", marginTop: "1px" }}>
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* --- Bottom Resize Handle --- */}
@@ -274,6 +434,17 @@ function AiAssistant({ code }) {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes typing {
+          0%, 100% { transform: translateY(0); opacity: 0.5; }
+          50% { transform: translateY(-4px); opacity: 1; background-color: var(--primary); }
+        }
+        .typing-dot {
+          width: 8px;
+          height: 8px;
+          background-color: var(--text-dim);
+          border-radius: 50%;
+          animation: typing 1.4s infinite ease-in-out both;
         }
       `}</style>
     </div>

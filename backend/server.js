@@ -126,7 +126,8 @@ app.post("/ask-ai", async (req, res) => {
       `${ML_SERVICE_URL}/ask-ai`,
       {
         code: req.body.code,
-        question: req.body.question
+        question: req.body.question,
+        history: req.body.history || []
       },
       {
         headers: {

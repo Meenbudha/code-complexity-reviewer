@@ -389,39 +389,45 @@ def extract_json(text):
 # --- AI ENHANCEMENT (used in /analyze) ---
 # ============================================================
 def get_ai_enhancement(code, offline_result):
-    prompt = f"""You are a senior software engineer reviewing code for a developer.
+    prompt = f"""<role>
+You are an Elite Senior Software Engineer and Expert Code Reviewer.
+</role>
 
-Analyze this code:
+<task>
+Perform a precise, professional code review. Analyze time/space complexity, identify critical risks, and suggest actionable optimizations.
+</task>
+
+<context>
+Code snippet to analyze:
 ```
 {code}
 ```
+Baseline Offline Estimates: Time={offline_result['time']}, Space={offline_result['space']}
+</context>
 
-Auto-detected complexity — Time: {offline_result['time']}, Space: {offline_result['space']}
+<rules>
+1. Verify or correct the baseline complexity estimates based on your deep algorithmic analysis.
+2. Write 1-2 WARNINGS focusing on performance bottlenecks, logical flaws, or dangerous edge cases.
+3. Write 1-2 TIPS offering concrete code improvements or modern best practices.
+4. Each warning/tip MUST start with a concise label (e.g., "Nested Loop Risk:" or "Use a HashMap:").
+5. Each warning/tip MUST be a single sentence (max 20 words) explicitly tied to the provided code. No generic fluff.
+6. Do NOT output markdown code blocks (like ```json) or any conversational text. Return ONLY valid JSON.
+</rules>
 
-Your job:
-1. Verify or correct the complexity estimates
-2. Write 1-2 WARNINGS about real risks in this code (performance, bugs, edge cases)
-3. Write 1-2 TIPS that give concrete improvement advice
-
-Format rules for warnings and tips:
-- Start with a short bold label, e.g. "Nested Loop Risk:" or "Use a HashMap:"
-- Follow with ONE clear sentence explaining WHY it matters or HOW to fix it
-- Be specific to this actual code — no generic advice
-- Keep each item under 20 words total
-
-Reply with ONLY this JSON, no extra text:
+<output_format>
 {{
-  "time": "<Big-O notation>",
-  "space": "<Big-O notation>",
+  "time": "<Verified Big-O notation>",
+  "space": "<Verified Big-O notation>",
   "warnings": [
-    "Label: one specific sentence about a real risk in this code.",
-    "Label: one specific sentence about another risk (omit if none)."
+    "Label: specific sentence about a risk in this code.",
+    "Label: specific sentence about a second risk (or omit)."
   ],
   "suggestions": [
-    "Label: one concrete actionable tip for this specific code.",
-    "Label: one more tip (omit if only one is relevant)."
+    "Label: concrete actionable tip for this code.",
+    "Label: second actionable tip (or omit)."
   ]
-}}"""
+}}
+</output_format>"""
 
     text, provider = call_ai_with_fallback(prompt, max_tokens=200)
 
@@ -510,6 +516,7 @@ def ask_ai():
     data = request.json
     question = data.get('question', '').strip()
     code = data.get('code', '').strip()
+    history = data.get('history', [])
 
     # Input validation
     if not question:
@@ -519,18 +526,49 @@ def ask_ai():
 
     # Build structured prompt with role + format instructions
     code_section = f"\n\nCode being analyzed:\n```\n{code[:3000]}\n```" if code else ""
+    
+    history_section = ""
+    if history:
+        history_text = "\n".join([f"{'Developer' if m['role']=='user' else 'AI'}: {m['text']}" for m in history])
+        history_section = f"\n\nPrevious Conversation Context:\n{history_text}"
 
-    prompt = f"""You are a senior software engineer helping a developer understand their code.{code_section}
+    prompt = f"""<role>
+You are an Elite Senior Software Engineer mentoring a developer. Your communication style is direct, clear, and highly instructive.
+</role>
 
-Developer's question: {question}
+<task>
+Answer the developer's specific question regarding their code. Provide a concise, technically accurate, and directly applicable response following a strict markdown structure.
+</task>
 
-Instructions:
-- Answer in 2-4 sentences maximum
-- Be specific to the code shown above (if provided)
-- Use plain English — avoid unnecessary jargon
-- If the question is about complexity, mention the Big-O notation
-- If you suggest an improvement, show a one-line code example
-- Do NOT repeat the question back"""
+<context>{code_section}{history_section}
+
+Current Developer's Question: {question}
+</context>
+
+<rules>
+1. Anchor your explanation strictly to the provided code context. Do not give abstract theory unless directly relevant.
+2. Use plain English and accessible language. Avoid unnecessary jargon, but use precise technical terms when appropriate.
+3. If the question pertains to performance, explicitly mention Big-O notation.
+4. Do NOT repeat or echo the developer's question.
+5. Output ONLY the formatted markdown response. No pleasantries or conversational filler.
+</rules>
+
+<output_format>
+Your response MUST be formatted EXACTLY using the following Markdown structure to maintain a premium, Claude-like analytical style:
+
+### 💡 Core Explanation
+[1-2 clear, dense sentences directly answering the developer's core question without fluff.]
+
+### 🔍 Analytical Breakdown
+*   **[Concept 1]:** [Brief explanation tied to the code]
+*   **[Concept 2]:** [Brief explanation tied to the code]
+*   **Complexity:** [Explicitly state Big-O Time and Space complexity if relevant]
+
+### 🛠️ Actionable Recommendation
+```[language]
+# [Concise code snippet demonstrating the fix or best practice]
+```
+</output_format>"""
 
     text, provider = call_ai_with_fallback(prompt, max_tokens=500)
 
