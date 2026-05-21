@@ -1,61 +1,99 @@
-// Imports
-require("dotenv").config(); // Load .env file
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const axios = require("axios");
-const crypto = require("crypto");          // built-in — no install needed
-const mongoose = require("mongoose");
+// ── Imports ──────────────────────────────────────────────────────────────────
+require("dotenv").config();
+const express     = require("express");
+const cors        = require("cors");
+const helmet      = require("helmet");
+const axios       = require("axios");
+const crypto      = require("crypto");
+const mongoose    = require("mongoose");
+const rateLimit   = require("express-rate-limit");
+const authRoutes  = require("./routes/auth");
+const verifyToken = require("./middleware/authMiddleware");
+const Analysis    = require("./models/Analysis"); // ✅ Moved to its own model file
 
-// App initialization
+// ── App Initialization ────────────────────────────────────────────────────────
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT           = process.env.PORT || 5000;
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
-//  Middlewares
-app.use(helmet({ contentSecurityPolicy: false })); // Security headers (X-Frame-Options, HSTS, etc.)
-app.use(cors()); // Allow Frontend to access this API
-app.use(express.json());
+// ── Security Middlewares ──────────────────────────────────────────────────────
 
+// CORS — FIX #1: Restrict to known origins only (was fully open)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  process.env.FRONTEND_URL,              // set this in production .env
+  "https://codemind-frontend.onrender.com"
+].filter(Boolean); // Remove any undefined entries
 
-//  Database Connection
-// Check for Render's environment variable first, otherwise use local database
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow server-to-server calls (no origin) and whitelisted origins
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: Origin '${origin}' not allowed`));
+    }
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(express.json({ limit: "1mb" })); // Guard against oversized payloads at middleware level
+
+// ── Global Rate Limiter (all routes) ─────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please slow down and try again later." }
+});
+app.use(globalLimiter);
+
+// ── Auth Routes (/auth/register, /auth/login, /auth/me) ──────────────────────
+app.use("/auth", authRoutes);
+
+// ── Database Connection ───────────────────────────────────────────────────────
 const dbURI = process.env.MONGO_URL || "mongodb://localhost:27017/codemind";
 
 mongoose.connect(dbURI)
   .then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.error("❌ MongoDB Connection Error:", err));
 
-// Define Schema
-const AnalysisSchema = new mongoose.Schema({
-  code:      String,
-  language:  String,
-  result:    Object,             // Stores complexity, warnings, etc.
-  codeHash:  { type: String, index: true }, // MD5 hash for cache lookup
-  timestamp: { type: Date, default: Date.now }
-});
-
-const Analysis = mongoose.model("Analysis", AnalysisSchema);
-
-// Helper: MD5 hash of trimmed code
+// ── Helper: MD5 hash of trimmed code ─────────────────────────────────────────
 function hashCode(code) {
   return crypto.createHash("md5").update(code.trim()).digest("hex");
 }
 
-//  Routes
+// ── Routes ───────────────────────────────────────────────────────────────────
 
 // Health Check
 app.get("/", (req, res) => {
-  res.send(`Node.js Backend Gateway is running on Port ${PORT}`);
+  res.json({ status: "ok", service: "CodeMind Backend", port: PORT });
 });
 
-// Forward Analysis Request to Python (Port 8000) & Save to DB
-app.post("/analyze", async (req, res) => {
+// ── POST /analyze — Forward to ML service & cache in MongoDB ─────────────────
+app.post("/analyze", verifyToken, async (req, res) => {
   try {
     const { code, language } = req.body;
+
+    // FIX #2 (part of Critical #1): Input validation — guard against empty/huge payloads
+    if (!code || typeof code !== "string" || !code.trim()) {
+      return res.status(400).json({ error: "Code is required." });
+    }
+    if (code.length > 50000) {
+      return res.status(413).json({ error: "Code too large. Maximum 50,000 characters." });
+    }
+    if (!language) {
+      return res.status(400).json({ error: "Language is required." });
+    }
+
     const codeHash = hashCode(code);
 
-    // ── Cache lookup ─────────────────────────────────────────────────
+    // Cache lookup — analysis results are not user-specific, so global cache is fine
     const cached = await Analysis.findOne({ codeHash }).sort({ timestamp: -1 });
     if (cached) {
       console.log(`⚡ Cache HIT  [${codeHash.slice(0, 8)}…] — skipping AI call`);
@@ -63,97 +101,97 @@ app.post("/analyze", async (req, res) => {
     }
     console.log(`🔍 Cache MISS [${codeHash.slice(0, 8)}…] — calling ML service`);
 
-    // ── Call ML Service ───────────────────────────────────────────────
+    // Call ML Service
     const response = await axios.post(
       `${ML_SERVICE_URL}/analyze`,
       { code, language },
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 40000
-      }
+      { headers: { "Content-Type": "application/json" }, timeout: 40000 }
     );
 
     const resultData = response.data;
 
-    // ── Save result + hash to MongoDB ─────────────────────────────────
-    const newAnalysis = new Analysis({ code, language, result: resultData, codeHash });
+    // FIX #1 (Critical): Save with userId so this record belongs to the authenticated user
+    const newAnalysis = new Analysis({
+      userId: req.user.id,   // ✅ ADDED — scopes this record to the logged-in user
+      code,
+      language,
+      result: resultData,
+      codeHash
+    });
     await newAnalysis.save();
 
     res.json({ ...resultData, _id: newAnalysis._id, _cached: false });
 
   } catch (error) {
-    // ── Timeout ───────────────────────────────────────────────────────
     if (error.code === "ECONNABORTED") {
       return res.status(504).json({
-        time: "Timeout",
-        space: "Timeout",
+        time: "Timeout", space: "Timeout",
         warnings: ["ML service took too long to respond."],
-        suggestions: ["Please try again in a few seconds. The AI might be under heavy load."]
+        suggestions: ["Please try again in a few seconds."]
       });
     }
-    // ── ML service returned a non-2xx (e.g. 422 language mismatch) ────
-    // Axios throws for any non-2xx — forward the ML response as-is
     if (error.response) {
-      console.warn(`⚠️  ML Service returned ${error.response.status}:`, error.response.data?.error);
+      console.warn(`⚠️  ML Service ${error.response.status}:`, error.response.data?.error);
       return res.status(error.response.status).json(error.response.data);
     }
-    // ── Network / unreachable ─────────────────────────────────────────
     console.error("Error connecting to ML Service:", error.message);
     res.status(500).json({
-      time: "Error",
-      space: "Error",
+      time: "Error", space: "Error",
       warnings: ["Could not connect to ML Service (Python)"],
       suggestions: ["Ensure app.py is running on port 8000"]
     });
   }
 });
 
-// Endpoint 2: Get History
-app.get("/history", async (req, res) => {
+// ── GET /history — Return only THIS user's analysis history ──────────────────
+app.get("/history", verifyToken, async (req, res) => {
   try {
-    // Fetch last 20 records, newest first
-    const history = await Analysis.find().sort({ timestamp: -1 }).limit(20);
+    // FIX #1 (Critical): Filter by userId — was returning ALL users' history
+    const history = await Analysis
+      .find({ userId: req.user.id })  // ✅ ADDED — user-scoped query
+      .sort({ timestamp: -1 })
+      .limit(20);
+
     res.json(history);
   } catch (error) {
-    res.status(500).json({ error: "Could not fetch history" });
+    console.error("History fetch error:", error.message);
+    res.status(500).json({ error: "Could not fetch history." });
   }
 });
 
-// Forward AI Chat Request to Python (Port 8000)
-app.post("/ask-ai", async (req, res) => {
+// ── POST /ask-ai — Forward chat to ML service ────────────────────────────────
+app.post("/ask-ai", verifyToken, async (req, res) => {
   try {
+    // Basic input validation
+    const { code, question, history } = req.body;
+    if (!question || typeof question !== "string" || !question.trim()) {
+      return res.status(400).json({ answer: "Question cannot be empty." });
+    }
+
     const response = await axios.post(
       `${ML_SERVICE_URL}/ask-ai`,
-      {
-        code: req.body.code,
-        question: req.body.question,
-        history: req.body.history || []
-      },
-      {
-        headers: {
-          "Content-Type": "application/json"
-        },
-        timeout: 40000 // INCREASED: Allow time for Gemini chat response
-      }
+      { code, question, history: history || [] },
+      { headers: { "Content-Type": "application/json" }, timeout: 40000 }
     );
 
     res.json(response.data);
+
   } catch (error) {
     if (error.code === "ECONNABORTED") {
       return res.status(504).json({
-        answer: "The AI Assistant took too long to respond. It might be under heavy load. Please try again in a few moments."
+        answer: "The AI Assistant took too long to respond. Please try again in a moment."
       });
     }
-
     console.error("Error connecting to AI Service:", error.message);
-
-    res.status(500).json({ answer: "The AI Assistant is currently unavailable. Please ensure the Python service is running." });
+    res.status(500).json({
+      answer: "The AI Assistant is currently unavailable."
+    });
   }
 });
 
-console.log("ML SERVICE:", ML_SERVICE_URL);
-
-//  Start Server
+// ── Start Server ──────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Node Backend running on http://localhost:${PORT}`);
+  console.log(`🤖 ML Service target: ${ML_SERVICE_URL}`);
+  console.log(`🛡️  CORS allowed origins: ${allowedOrigins.join(", ")}`);
 });

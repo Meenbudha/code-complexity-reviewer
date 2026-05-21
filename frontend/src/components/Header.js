@@ -1,6 +1,6 @@
 import React from 'react';
 
-function Header({ darkMode, setDarkMode }) {
+function Header({ darkMode, setDarkMode, userSlot }) {
   return (
     <header style={{
       height: "60px",
@@ -29,21 +29,25 @@ function Header({ darkMode, setDarkMode }) {
         </div>
       </div>
 
-      <button 
-        onClick={() => setDarkMode(!darkMode)}
-        style={{
-          background: "transparent",
-          border: "1px solid var(--border)",
-          color: "var(--text-main)",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontSize: "1.2rem"
-        }}
-        title="Toggle Theme"
-      >
-        {darkMode ? "🔆" : "🌙"}
-      </button>
+      {/* Right side — user badge + theme toggle */}
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {userSlot && userSlot}
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          style={{
+            background: "transparent",
+            border: "1px solid var(--border)",
+            color: "var(--text-main)",
+            padding: "6px 12px",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "1.2rem"
+          }}
+          title="Toggle Theme"
+        >
+          {darkMode ? "🔆" : "🌙"}
+        </button>
+      </div>
     </header>
   );
 }

@@ -64,6 +64,14 @@ def validate_env():
 validate_env()
 
 # ============================================================
+# --- CONSTANTS ---
+# ============================================================
+# FIX #2 (Critical): AI_TIMEOUT_SECONDS was previously defined AFTER
+# it was used in the Gemini client init (line ~90), causing a NameError
+# on startup when GEMINI_API_KEY is set. Moved here.
+AI_TIMEOUT_SECONDS = 10
+
+# ============================================================
 # --- CLIENT INITIALIZATION: GEMINI + AWS BEDROCK ---
 # ============================================================
 
@@ -284,7 +292,6 @@ def analyze_offline(code):
 # ============================================================
 # --- HELPER: SHOULD WE FALLBACK? ---
 # ============================================================
-AI_TIMEOUT_SECONDS = 10
 
 def is_rate_limit_error(e):
     """Detect 429 / RESOURCE_EXHAUSTED / ThrottlingException / Timeout."""

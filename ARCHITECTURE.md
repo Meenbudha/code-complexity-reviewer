@@ -18,54 +18,95 @@
 10. [CI/CD Pipeline (GitHub Actions)](#10-cicd-pipeline-github-actions)
 11. [Deployment on Render](#11-deployment-on-render)
 12. [Cold Start & Performance](#12-cold-start--performance)
+13. [Authentication & Security](#13-authentication--security)
 
 ---
 
 ## 1. System Overview
 
-CodeMind AI is split into **three independent services** that communicate with each other over HTTP:
+CodeMind AI is split into **three independent services** that communicate over HTTP, protected end-to-end by JWT authentication:
 
 ```
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│                          AUTHENTICATION LAYER (JWT)                                  │
+│  Register / Login → JWT issued → stored in localStorage → sent as Bearer token       │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+
 ┌─────────────────────────┐        ┌────────────────────────┐        ┌──────────────────────────┐
 │                         │        │                        │        │                          │
-│   FRONTEND (React)      │───────▶│   BACKEND (Node.js)    │───────▶│  ML SERVICE (Python)     │
+│   FRONTEND (React)      │──JWT──▶│   BACKEND (Node.js)    │───────▶│  ML SERVICE (Python)     │
 │   Port: 3000            │        │   Port: 5000           │        │  Port: 8000              │
-│                         │◀───────│                        │◀───────│                          │
-└─────────────────────────┘        └────────────┬───────────┘        └──────────────────────────┘
-                                                │
-                                                │ Save / Read Results + Cache
+│   AuthGate / AuthCtx    │◀───────│   verifyToken guard    │◀───────│  Gemini → Bedrock →      │
+└─────────────────────────┘        └────────────┬───────────┘        │  Offline fallback chain  │
+                                                │                    └──────────────────────────┘
+                                                │ Save / Read (user-scoped)
                                                 ▼
-                                   ┌────────────────────────┐
-                                   │   MongoDB Database      │
-                                   │   (History + Cache)     │
-                                   └────────────────────────┘
+                                   ┌────────────────────────────┐
+                                   │   MongoDB Atlas            │
+                                   │   users collection         │
+                                   │   analyses collection      │
+                                   │   (userId-scoped records)  │
+                                   └────────────────────────────┘
 ```
 
-**The golden rule:** The Frontend **never** talks directly to the Python service. All requests go through the Node.js backend, which acts as a secure **API Gateway**.
+**Architecture rules:**
+- The Frontend **never** talks directly to the Python service — all requests go through the Node.js backend (API Gateway)
+- Every API endpoint except `/auth/*` requires a valid JWT in the `Authorization: Bearer` header
+- Each user sees **only their own** analysis history — records are scoped by `userId`
+- CORS is restricted to the whitelisted frontend origin — no cross-site API calls allowed
 
 ---
 
 ## 2. How a Request Flows End-to-End
 
-Here is the complete journey of a single "Analyze Code" click:
+Here is the complete journey for a first-time user through registration, then analysis:
 
 ```
+━━━ STEP 0: AUTHENTICATION (happens once per session) ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+User opens app
+        │
+        ▼
+[0a] AuthGate checks localStorage for cm_token
+     ├── Token found & valid → skip to MainApp
+     └── No token → show LoginPage or RegisterPage
+
+User submits Register form
+        │
+        ▼
+[0b] LoginPage / RegisterPage → POST /auth/register (or /auth/login)
+     Rate limiter: max 10 login / 5 register attempts per IP per window
+        │
+        ▼
+[0c] server.js → bcrypt.hash(password, 12) → User.create() → jwt.sign()
+     Returns: { token, user: { id, name, email } }
+        │
+        ▼
+[0d] AuthContext.login() stores token + user in localStorage
+     AuthGate re-renders → MainApp now visible
+
+━━━ STEP 1–5: CODE ANALYSIS (every "ANALYZE CODE" click) ━━━━━━━━━━━━━━━━━━━━━
+
 User clicks "ANALYZE CODE"
         │
         ▼
-[1] App.js → POST http://localhost:5000/analyze
+[1] App.js → POST /analyze
+    Headers: { Authorization: "Bearer <jwt>" }
     Body: { code: "...", language: "java" }
     UI immediately shows SkeletonLoader (shimmer placeholder)
         │
         ▼
-[2] server.js receives the request.
-    Computes MD5 hash of the code → checks MongoDB for a cached result.
-    ├── Cache HIT  → returns cached result instantly (~5ms). No AI call made.
-    └── Cache MISS → forwards to Python via axios → POST http://localhost:8000/analyze
+[2] server.js → verifyToken middleware
+    ├── Invalid / expired token → 401/403, user forced back to login
+    └── Valid token → req.user = { id, name, email }
+    Input guard: code.length > 50,000 chars → 413 rejected
+    MD5 hash → MongoDB cache lookup
+    ├── Cache HIT  → ⚡ return cached result (~5ms). No AI call.
+    └── Cache MISS → axios → POST http://localhost:8000/analyze
         │
         ▼
 [3] app.py receives the code.
-    Step A: validate_env() already ran at startup — clients are pre-initialized.
+    Step A: validate_env() already ran at startup — clients pre-initialized.
     Step B: detect_language() — verifies language matches user selection.
     Step C: analyze_offline() — instant static heuristic analysis (no internet).
     Step D: get_ai_enhancement() — 3-tier AI fallback:
@@ -76,13 +117,13 @@ User clicks "ANALYZE CODE"
         │
         ▼
 [4] server.js receives the result.
-    Saves it to MongoDB with codeHash for future cache hits.
+    Saves to MongoDB with { codeHash, userId: req.user.id } — user-scoped.
     Sends result + _id + _cached:false back to React.
         │
         ▼
 [5] App.js receives the result.
-    SkeletonLoader is replaced by real ResultPanel with TC, SC, warnings, tips.
-    Adds the analysis to the sidebar history list.
+    SkeletonLoader replaced by ResultPanel with TC, SC, warnings, tips.
+    Adds to sidebar history (user sees only their own entries).
 ```
 
 ---
@@ -97,38 +138,95 @@ The frontend is a single-page React application. It has no page routing — the 
 
 This is the root component that holds all the application state and orchestrates everything.
 
-**Key State Variables:**
+**Location:** `frontend/src/`
+
+The frontend is a single-page React application with a JWT-based auth gate. Unauthenticated users see Login/Register; authenticated users see the full dashboard.
+
+### 3.1 `App.js` — Root Component
+
+Wraps the app in `<AuthProvider>` and uses `<AuthGate>` to decide what to render.
+
+**Architecture:**
+```
+<App>
+  <AuthProvider>          ← provides user/token/login/logout globally
+    <AuthGate>            ← shows Login or Register if not authenticated
+      <MainApp />         ← full dashboard (previously the entire App component)
+    </AuthGate>
+  </AuthProvider>
+</App>
+```
+
+**`MainApp` State Variables:**
 
 | State | Type | Purpose |
 |---|---|---|
 | `code` | string | The code currently typed in the editor |
 | `language` | string | Selected language: `"c"`, `"java"`, or `"python"` |
 | `result` | object | The analysis result `{ time, space, warnings, suggestions }` |
-| `loading` | boolean | `true` while waiting for the API response — triggers SkeletonLoader |
+| `loading` | boolean | `true` while waiting for the API — triggers SkeletonLoader |
 | `isHistoryLoading` | boolean | `true` while fetching history from MongoDB — triggers sidebar skeleton |
 | `hasAnalyzed` | boolean | Triggers the layout shift (editor + report side-by-side) |
-| `isWarmedUp` | boolean | `false` until WarmupScreen confirms all services are online |
-| `history` | array | List of past analyses loaded from MongoDB |
+| `isWarmedUp` | boolean | `false` until WarmupScreen confirms all services online |
+| `history` | array | Past analyses loaded from MongoDB (user-scoped) |
 | `darkMode` | boolean | `true` = dark theme, `false` = light theme |
 | `topSectionHeight` | number | Height (px) of the editor area, draggable by user |
 
-**Key Functions:**
+**Key Functions in `MainApp`:**
 
-- **`analyzeCode()`** — The main function. Sets loading state, POSTs code to the Node backend, handles the response (including language mismatch errors), updates state with the result, and adds it to the history list.
-- **`loadFromHistory(item)`** — When a user clicks an item in the sidebar, this repopulates the editor with the old code and shows its saved result.
-- **`resetAnalysis()`** — Clears code, result, and resets the layout to the initial "hero" view.
-- **Resize Logic** — Uses `mousedown`, `mousemove`, and `mouseup` event listeners to let the user drag the border between the editor/report area and the AI Assistant panel.
+- **`authHeaders()`** — Memoized helper that returns `{ "Content-Type": "application/json", "Authorization": "Bearer <token>" }` for every fetch call.
+- **`analyzeCode()`** — POSTs code+language to `/analyze` with auth header. Handles language mismatch 422 errors and cache-hit flags.
+- **`loadFromHistory(item)`** — Repopulates the editor from a sidebar item.
+- **`resetAnalysis()`** — Clears code, result, and layout back to the hero view.
+- **Resize Logic** — `mousedown`/`mousemove`/`mouseup` listeners let the user drag the editor/AI panel border.
 
-**On startup**, the app fetches `/history` from the backend to pre-populate the sidebar with the last 20 saved analyses from MongoDB.
+**On startup**, `MainApp` fetches `/history` with the JWT header to pre-populate the sidebar with the user's last 20 analyses.
 
 ---
 
-### 3.2 Component Breakdown
+### 3.2 Authentication Components
+
+#### `context/AuthContext.js` — Global Auth State
+
+- Provides `user`, `token`, `isAuthenticated`, `login()`, `logout()` to the entire app via React Context.
+- On mount: reads `cm_token` and `cm_user` from `localStorage` so the session survives page refresh.
+- `login(userData, jwt)` — saves both to state and `localStorage`.
+- `logout()` — clears state and `localStorage`; `AuthGate` immediately shows `LoginPage`.
+- Consumed via `const { token, user, logout } = useAuth()` in any component.
+
+#### `components/LoginPage.js` — Login UI
+
+- Full-screen glassmorphism card with three animated background orbs (cyan + violet).
+- Fields: **Email**, **Password** (with show/hide toggle eye button).
+- Error banner with shake animation on invalid credentials.
+- On success: calls `AuthContext.login()` → `AuthGate` re-renders to `MainApp`.
+- Link to switch to RegisterPage (no page navigation — state swap in `AuthGate`).
+
+#### `components/RegisterPage.js` — Register UI
+
+- Matches the LoginPage aesthetic exactly.
+- Fields: **Full Name**, **Email**, **Password**, **Confirm Password**.
+- Live **password strength meter** — 5-bar indicator, colour-coded (red → amber → green).
+- Real-time **password match indicator** — shows `✓ Passwords match` / `Passwords do not match`.
+- Auto-logs in after successful registration (no extra login step needed).
+
+#### `UserBadge` (inline in `App.js`)
+
+- Rendered inside the `Header` via `userSlot` prop.
+- Shows a **gradient avatar circle** (user initials) + display name + chevron icon.
+- Clicking opens a **dropdown** with user email and a red **Sign out** button.
+- Clicking outside closes it (uses `mousedown` listener on `document`).
+- Sign out calls `AuthContext.logout()` → `AuthGate` immediately shows `LoginPage`.
+
+---
+
+### 3.3 Component Breakdown
 
 #### `Header.js`
 - Displays the CodeMind AI brand name in the top navigation bar.
-- Contains the **dark/light mode toggle** button.
-- Passes the `darkMode` state and `setDarkMode` setter as props.
+- Accepts a `userSlot` prop — renders whatever JSX is passed (used by `App.js` to inject `<UserBadge />`).
+- Contains the **dark/light mode toggle** button alongside the user badge.
+- Props: `darkMode`, `setDarkMode`, `userSlot`.
 
 #### `Sidebar.js`
 - A slide-in panel on the left side of the screen.
@@ -169,17 +267,13 @@ This is the root component that holds all the application state and orchestrates
 - Plots points from `n=0` to `n=50` to visually show how the algorithm's runtime would scale.
 
 #### `AiAssistant.js`
-- A collapsible chat panel pinned to the bottom of the screen. Expanded by default (`isExpanded: true`) on page load.
-- **Claude-style Input Area:** Replaced basic input with a multi-line auto-resizing `<textarea>` (max-height 150px) that allows multi-line pasting. Uses `Enter` to send, `Shift+Enter` for newlines.
-- **Integrated Toolbar:** Features a bottom toolbar inside the input wrapper with a mockup file attachment `+` icon, a `CodeMind AI` model selector dropdown mock, and an integrated send button that only turns primary-coloured when text is typed.
-- **New Chat Control:** Header includes a `+ New Chat` button to clear the conversation history instantly.
-- **Resizable:** Has top and bottom drag handles to resize the chat window height.
-- **Chat Flow:**
-  1. User types a question and presses Enter.
-  2. The component immediately appends the user's message to the `history` state for instant UI feedback.
-  3. It POSTs `{ code, question }` to `/ask-ai` on the Node backend.
-  4. Shows a shimmering skeleton loader bubble while waiting.
-  5. Appends the AI's structured response (formatted via `react-markdown`) to the chat.
+- A collapsible chat panel pinned to the bottom of the screen.
+- Imports `useAuth` and passes `Authorization: Bearer <token>` on every `/ask-ai` fetch — required since `/ask-ai` is now a protected endpoint.
+- **Claude-style Input Area:** Multi-line auto-resizing `<textarea>` (max 150px). `Enter` sends, `Shift+Enter` newlines.
+- **Integrated Toolbar:** Bottom toolbar with `+` icon, `CodeMind AI` model label, and send button.
+- **New Chat Control:** `+ New Chat` button clears conversation history.
+- **Resizable:** Top and bottom drag handles resize chat window height.
+- **Chat Flow:** User question → immediate UI append → POST `/ask-ai` → skeleton loader → AI markdown response.
 
 ---
 
@@ -222,108 +316,145 @@ Skeleton card shells use the same `border-top` colours as real TC/SC cards (`--p
 
 ## 4. Backend (Node.js / Express)
 
-**Location:** `backend/server.js`
+**Location:** `backend/`
 **Port:** `5000`
 
-The Node.js server is an **API Gateway**. Its four jobs are:
+The Node.js server is the **API Gateway + Auth Server**. Its jobs:
 
-1. **Cache** — Check MongoDB for a cached result before calling the ML service.
-2. **Proxy** — Forward cache-miss requests from React to the Python ML service.
-3. **Persist** — Save results + MD5 hash to MongoDB.
-4. **Serve** — Return analysis history to the frontend.
+1. **Authenticate** — Issue and verify JWT tokens via `/auth/*` routes.
+2. **Authorize** — Verify JWT on every protected endpoint before processing.
+3. **Cache** — Check MongoDB for a cached result before calling the ML service.
+4. **Proxy** — Forward cache-miss requests to the Python ML service.
+5. **Persist** — Save results with `userId` + MD5 hash to MongoDB.
+6. **Serve** — Return user-scoped analysis history to the frontend.
 
-### 4.1 Middleware Stack
+### 4.1 File Structure
 
-```js
-app.use(helmet({ contentSecurityPolicy: false })); // 15 security HTTP headers
-app.use(cors());                                    // Allow frontend origin
-app.use(express.json());                            // Parse JSON bodies
+```
+backend/
+├── server.js                   ← Main entry point, mounts all routes
+├── .env                        ← PORT, MONGO_URL, ML_SERVICE_URL, JWT_SECRET, FRONTEND_URL
+├── models/
+│   ├── User.js                 ← Mongoose schema: name, email, password (hashed)
+│   └── Analysis.js             ← Mongoose schema: userId, code, language, result, codeHash
+├── routes/
+│   └── auth.js                 ← POST /auth/register, POST /auth/login, GET /auth/me
+└── middleware/
+    └── authMiddleware.js       ← verifyToken — reads Bearer token, attaches req.user
 ```
 
-**Helmet** sets the following headers automatically:
+### 4.2 Middleware Stack
+
+```js
+// 1. Security headers (15 HTTP security headers)
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// 2. CORS — whitelisted origins only (was fully open before)
+app.use(cors({
+  origin: ["http://localhost:3000", process.env.FRONTEND_URL, "https://codemind-frontend.onrender.com"],
+  methods: ["GET", "POST", "OPTIONS"],
+  credentials: true
+}));
+
+// 3. Body parser with 1MB payload limit (guards against oversized submissions)
+app.use(express.json({ limit: "1mb" }));
+
+// 4. Global rate limiter (all routes)
+// 200 req / 15 min per IP — catches general abuse
+app.use(globalLimiter);
+
+// 5. Auth routes (mounted before verifyToken so login/register are public)
+app.use("/auth", authRoutes);
+```
+
+**Helmet** sets these key headers:
 
 | Header | Purpose |
 |---|---|
-| `X-Frame-Options: SAMEORIGIN` | Prevents clickjacking (iframe embedding) |
-| `X-Content-Type-Options: nosniff` | Prevents MIME-type sniffing attacks |
-| `Strict-Transport-Security` | Forces HTTPS on all future requests |
+| `X-Frame-Options: SAMEORIGIN` | Prevents clickjacking |
+| `X-Content-Type-Options: nosniff` | Prevents MIME-type sniffing |
+| `Strict-Transport-Security` | Forces HTTPS |
 | `X-DNS-Prefetch-Control: off` | Disables DNS prefetching |
 | `Referrer-Policy: no-referrer` | Stops referrer leaking |
 
-`contentSecurityPolicy: false` is set to prevent Helmet from blocking the frontend's connection to the API.
-
-### 4.2 Request Caching (MD5)
+### 4.3 Request Caching (MD5)
 
 Every `/analyze` request is hashed before calling the ML service:
 
 ```js
-const crypto = require("crypto");  // built-in — no install needed
-
 function hashCode(code) {
   return crypto.createHash("md5").update(code.trim()).digest("hex");
 }
 ```
 
-- `code.trim()` is used so trailing newlines don't cause unnecessary cache misses.
-- The hash is stored in MongoDB as `codeHash` with `index: true` for O(1) lookup.
-- On a **cache hit**, the saved result is returned immediately (~5ms) with `_cached: true`.
-- On a **cache miss**, the ML service is called, the result is saved with the hash, and `_cached: false` is returned.
+- `code.trim()` prevents cache misses from trailing whitespace.
+- Hash stored in MongoDB as `codeHash` with `index: true` for O(1) lookup.
+- Cache is **global** (not user-scoped) — two users submitting identical code share the same cached result, reducing AI costs.
+- History records **are** user-scoped via `userId`.
 
-**Cache behaviour:**
 ```
-POST /analyze
+POST /analyze  (with valid JWT)
+    ↓
+Input guard: code.length > 50,000? → 413 rejected
     ↓
 hashCode(code) = "a3f8c1d2…"
     ↓
-MongoDB.findOne({ codeHash: "a3f8c1d2…" })
-    ├── HIT  → ⚡ return cached result, skip ML call entirely
-    └── MISS → 🔍 call ML service → save with hash → return fresh result
+MongoDB.findOne({ codeHash })
+    ├─ HIT  → ⚡ return cached result instantly (~5ms)
+    └─ MISS → 🔍 call ML service → save with { codeHash, userId } → return fresh result
 ```
 
-Terminal logs show cache activity clearly:
-```
-⚡ Cache HIT  [a3f8c1d2…] — skipping AI call
-🔍 Cache MISS [a3f8c1d2…] — calling ML service
-```
+### 4.4 API Endpoints
 
-### 4.3 API Endpoints
+#### Auth Routes (public — no JWT required)
+
+##### `POST /auth/register`
+- Rate limited: **5 requests / IP / hour** (prevent mass account creation)
+- Body: `{ name, email, password }`
+- Validates: all fields present, password ≥ 6 chars, email not already registered
+- Action: `bcrypt.hash(password, 12)` → `User.create()` → `jwt.sign({ id, name, email }, JWT_SECRET, { expiresIn: "7d" })`
+- Returns: `{ token, user: { id, name, email } }` with HTTP 201
+
+##### `POST /auth/login`
+- Rate limited: **10 requests / IP / 15 min** (prevent brute-force)
+- Body: `{ email, password }`
+- Action: `User.findOne({ email })` → `bcrypt.compare(password, user.password)` → `jwt.sign()`
+- Returns: `{ token, user: { id, name, email } }` or 401 with `"Invalid email or password."`
+- Generic error message used for both "user not found" and "wrong password" — prevents user enumeration
+
+##### `GET /auth/me`
+- Requires JWT (uses `verifyToken` middleware)
+- Returns the current user's profile from the database
+- Used by frontend on mount to validate a stored token is still valid
+
+#### Protected Routes (JWT required via `verifyToken`)
+
+##### `POST /analyze`
+**Body:** `{ code: string, language: string }`
+
+1. `verifyToken` checks `Authorization: Bearer <token>` header → attaches `req.user`
+2. Input validation: rejects empty code, wrong type, or code > 50,000 chars (413)
+3. MD5 cache lookup (global, not user-scoped)
+4. Cache hit → return immediately with `_cached: true`
+5. Cache miss → forward to Python ML service (40s axios timeout)
+6. Save result with `{ codeHash, userId: req.user.id }` to MongoDB
+7. Return result with `_id`, `_cached: false`
+
+##### `GET /history`
+1. `verifyToken` extracts `req.user.id`
+2. Queries: `Analysis.find({ userId: req.user.id }).sort({ timestamp: -1 }).limit(20)`
+3. Returns only **this user's** last 20 records (was returning all users' records before the fix)
+
+##### `POST /ask-ai`
+**Body:** `{ code: string, question: string, history: array }`
+
+1. `verifyToken` required
+2. Validates question is not empty
+3. Proxies to `ML_SERVICE_URL/ask-ai` (40s timeout)
+4. Returns `{ answer, _ai_provider }`
 
 #### `GET /`
-Health check. Returns a simple text response confirming the server is running.
-
-#### `POST /analyze`
-**Request Body:** `{ code: string, language: string }`
-
-1. Computes MD5 hash of `code.trim()`.
-2. Checks MongoDB for a cached result with the same hash.
-3. On cache hit → returns immediately with `_cached: true`.
-4. On cache miss → forwards to Python ML service (`axios`, 40s timeout).
-5. Saves result + `codeHash` to MongoDB.
-6. Returns result JSON with `_id`, `_cached: false`.
-7. On axios timeout (`ECONNABORTED`) → returns clean 504 error response.
-
-#### `GET /history`
-1. Queries MongoDB for the **20 most recent** analysis records, sorted newest-first.
-2. Returns the array to the frontend. Used to populate the sidebar on page load.
-
-#### `POST /ask-ai`
-**Request Body:** `{ code: string, question: string }`
-
-1. Proxies the chat request to `ML_SERVICE_URL/ask-ai`.
-2. Returns the AI's text answer + `_ai_provider` back to the `AiAssistant` component.
-3. Handles timeout gracefully with a user-friendly error message.
-
-### 4.4 MongoDB Schema (`Analysis`)
-
-```js
-{
-  code:      String,   // The submitted source code
-  language:  String,   // "c", "java", or "python"
-  result:    Object,   // { time, space, warnings, suggestions, _ai_provider }
-  codeHash:  String,   // MD5 of code.trim() — indexed for fast cache lookup
-  timestamp: Date      // Auto-set to current time on save
-}
-```
+Health check. Returns: `{ status: "ok", service: "CodeMind Backend", port: PORT }`
 
 ---
 
@@ -544,35 +675,81 @@ Health check. Returns:
 ## 6. Database (MongoDB)
 
 **Database Name:** `codemind`
-**Collection:** `analyses`
+**Provider:** MongoDB Atlas (cloud) / `localhost:27017` (local dev)
 
-MongoDB serves two purposes:
-1. **History** — Stores all analysis results for the sidebar.
-2. **Cache** — `codeHash` field enables instant lookup for duplicate code submissions.
+MongoDB serves three purposes:
+1. **Auth** — Stores user accounts in the `users` collection.
+2. **History** — Stores analysis results per-user in the `analyses` collection.
+3. **Cache** — `codeHash` field enables instant lookup for duplicate code submissions (global, not user-scoped).
 
-The `codeHash` field has `index: true` so MongoDB can find cached entries in O(1) instead of scanning the full collection.
+### `users` Collection — `models/User.js`
 
-- **Local:** Connects to `mongodb://localhost:27017/codemind`
-- **Cloud (Render):** Reads `MONGO_URI` environment variable for the connection string.
+```js
+{
+  name:      String,          // Display name (trimmed, min 2 chars)
+  email:     String,          // Unique, lowercase, validated format
+  password:  String,          // bcrypt hash (12 salt rounds) — NEVER stored plain
+  createdAt: Date             // Auto-set on account creation
+}
+```
+
+- `email` has `unique: true` — enforced at both schema and DB index level.
+- Password is hashed via `bcrypt.hash(password, 12)` before storage.
+- The `/auth/me` endpoint always selects with `.select("-password")` — hash never sent to client.
+
+### `analyses` Collection — `models/Analysis.js`
+
+```js
+{
+  userId:    ObjectId,        // Ref: users._id — INDEXED, scopes record to one user
+  code:      String,          // The submitted source code
+  language:  String,          // "c", "java", or "python"
+  result:    Object,          // { time, space, warnings, suggestions, _ai_provider }
+  codeHash:  String,          // MD5 of code.trim() — INDEXED for O(1) cache lookup
+  timestamp: Date             // Auto-set to current time on save
+}
+```
+
+- `userId` has `index: true` — fast per-user history queries.
+- `codeHash` has `index: true` — fast global cache lookups.
+- **Privacy rule:** every `Analysis.find()` call MUST include `{ userId: req.user.id }` to prevent data leakage.
 
 ---
 
 ## 7. Environment Variables
 
-| Variable | Service | Purpose |
+### Backend (`backend/.env`)
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | Backend | The port the Node.js server listens on (default: `5000`) |
-| `MONGO_URI` | Backend | MongoDB connection string (default: local) |
-| `ML_SERVICE_URL` | Backend | URL of the Python service (default: `http://localhost:8000`) |
-| `GEMINI_API_KEY` | ML Service | Google Gemini API key — primary AI provider |
-| `AWS_ACCESS_KEY_ID` | ML Service | AWS credentials for Bedrock fallback |
-| `AWS_SECRET_ACCESS_KEY` | ML Service | AWS credentials for Bedrock fallback |
-| `AWS_REGION` | ML Service | AWS region for Bedrock (default: `us-east-1`) |
-| `REACT_APP_BACKEND_URL` | Frontend | URL of the Node.js backend (default: `http://localhost:5000`) |
+| `PORT` | `5000` | Port the Node.js server listens on |
+| `MONGO_URL` | `mongodb://localhost:27017/codemind` | MongoDB connection string |
+| `ML_SERVICE_URL` | `http://localhost:8000` | URL of the Python ML service |
+| `JWT_SECRET` | *(required)* | Secret key for signing/verifying JWTs. Use a long random string in production. |
+| `FRONTEND_URL` | *(optional)* | Additional CORS-allowed origin for production (e.g. `https://codemind-frontend.onrender.com`) |
 
-> **On Render:** Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` to the **ml-service** environment only. The backend service does not need them.
+### ML Service (`ml-service/.env`)
 
-> **Startup validation:** The ML service prints a full status table on every start so you immediately know which providers are active. See Section 5.1.
+| Variable | Default | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | — | Google Gemini API key — primary AI provider |
+| `AWS_ACCESS_KEY_ID` | — | AWS credentials for Bedrock fallback |
+| `AWS_SECRET_ACCESS_KEY` | — | AWS credentials for Bedrock fallback |
+| `AWS_REGION` | `us-east-1` | AWS region for Bedrock |
+| `FLASK_ENV` | `development` | Set to `production` on Render |
+
+### Frontend (`frontend/.env`)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `REACT_APP_BACKEND_URL` | `http://localhost:5000` | URL of the Node.js backend |
+| `REACT_APP_ML_URL` | `http://localhost:8000` | URL of the ML service (used by WarmupScreen pings) |
+
+> **REACT_APP_* variables** are baked into the static bundle at build time — they are NOT runtime env vars.
+
+> **JWT_SECRET** must be a long random string in production. Never commit it to Git. Add to Render environment variables.
+
+> **Startup validation:** The ML service prints a full status table on every start confirming which AI providers are active. See Section 5.1.
 
 ---
 
@@ -586,16 +763,16 @@ cd ml-service
 # First time only:
 python -m venv venv
 .\venv\Scripts\activate
-pip install flask flask-cors google-genai boto3 python-dotenv pytest
+pip install -r requirements.txt   # all versions pinned
 
-# Create a .env file with your keys:
+# Create ml-service/.env:
 # GEMINI_API_KEY=your_gemini_key
 # AWS_ACCESS_KEY_ID=your_aws_key
 # AWS_SECRET_ACCESS_KEY=your_aws_secret
 # AWS_REGION=us-east-1
 
 python app.py
-# Startup prints env validation table, then:
+# Prints env validation table, then:
 # ✅ Gemini AI Client Initialized
 # ✅ AWS Bedrock Client Initialized (Region: us-east-1)
 # Runs on http://localhost:8000
@@ -604,25 +781,39 @@ python app.py
 **Terminal 2 — Backend (Node.js):**
 ```bash
 cd backend
-# First time only:
-npm install
+npm install   # first time only
 
-npm start
-# Runs on http://localhost:5000
+# Create backend/.env:
+# PORT=5000
+# MONGO_URL=mongodb://localhost:27017/codemind
+# ML_SERVICE_URL=http://localhost:8000
+# JWT_SECRET=any_long_random_string_for_local_dev
+
+node server.js
+# 🚀 Node Backend running on http://localhost:5000
 # ✅ MongoDB Connected
+# 🛡️  CORS allowed origins: http://localhost:3000, ...
 ```
 
-**Terminal 3 — Frontend (React):**
+**Terminal 3 — Frontend (React) — Development Mode:**
 ```bash
 cd frontend
-# First time only:
-npm install
+npm install   # first time only
 
-npm start
-# Runs on http://localhost:3000
+# Create frontend/.env:
+# REACT_APP_BACKEND_URL=http://localhost:5000
+# REACT_APP_ML_URL=http://localhost:8000
+
+npm run dev   # ← USE THIS for development (hot-reload, no rebuild needed)
+# Runs on http://localhost:3000 with instant source changes
+
+# Only use these for production testing:
+# npm run build   ← compiles src/ into build/ (~60 seconds)
+# npm start       ← serves the compiled build/ folder
 ```
 
-Open your browser at **http://localhost:3000**.
+> **⚠️ Important:** `npm start` serves the pre-compiled `build/` folder, NOT the source files.
+> Always use `npm run dev` during development for live hot-reload.
 
 ---
 
@@ -1127,3 +1318,177 @@ on:
 - **3-tier AI fallback** (Gemini → Bedrock → Offline) ensures analysis always completes even if AI providers are down
 - **gunicorn 2 workers** on ML service handles concurrent requests without queuing
 - **40s axios timeout** on backend gives ML service enough time to complete AI calls on cold starts
+- **`express.json({ limit: "1mb" })`** hard-caps request size at middleware level before any route logic runs
+
+---
+
+## 13. Authentication & Security
+
+This section documents the complete auth system added in v2.0, the security decisions behind each layer, and what each component does.
+
+---
+
+### 13.1 Authentication Flow (Full Detail)
+
+```
+┌─────────────┐     POST /auth/register     ┌──────────────────────────────┐
+│             │  { name, email, password }  │                              │
+│  Register   │ ──────────────────────────▶ │  registerLimiter             │
+│  Page       │                             │  (max 5/IP/hour)             │
+│             │                             │         ↓                    │
+│             │                             │  Validate fields             │
+│             │                             │  Check email uniqueness      │
+│             │                             │  bcrypt.hash(password, 12)   │
+│             │                             │  User.create()               │
+│             │                             │  jwt.sign({ id, name, email })│
+│             │ ◀────────────────────────── │  → { token, user }           │
+└─────────────┘                             └──────────────────────────────┘
+      │
+      │  AuthContext.login(user, token)
+      │  localStorage.setItem("cm_token", token)
+      │  localStorage.setItem("cm_user", JSON.stringify(user))
+      ▼
+┌─────────────┐
+│  AuthGate   │  isAuthenticated = true → renders MainApp
+│  re-renders │
+└─────────────┘
+      │
+      │  Every subsequent API call:
+      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  App.js authHeaders()                                           │
+│  Returns: { "Authorization": "Bearer eyJhbGci..." }            │
+│  Used in: /analyze, /history, /ask-ai, /auth/me                │
+└─────────────────────────────────────────────────────────────────┘
+      │
+      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  authMiddleware.js (verifyToken)                                │
+│                                                                 │
+│  1. Read header: req.headers.authorization                      │
+│  2. Split: "Bearer <token>" → extract token                     │
+│  3. jwt.verify(token, JWT_SECRET)                               │
+│     ├── Invalid signature → 403 Forbidden                       │
+│     ├── Expired (>7 days) → 401/403                             │
+│     └── Valid → req.user = { id, name, email }                  │
+│  4. next() → route handler runs                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 13.2 Security Layers (Defence in Depth)
+
+Every request passes through multiple independent security layers:
+
+| Layer | Implementation | What it stops |
+|---|---|---|
+| **CORS whitelist** | `cors({ origin: [whitelist] })` | Requests from unknown domains/origins |
+| **Helmet headers** | `helmet()` | Clickjacking, MIME sniffing, protocol downgrade |
+| **Payload size cap** | `express.json({ limit: "1mb" })` | Oversized request body attacks |
+| **Global rate limit** | `rateLimit({ max: 200/15min })` | General API abuse / scraping |
+| **Auth rate limit (login)** | `rateLimit({ max: 10/15min })` | Brute-force password attacks |
+| **Auth rate limit (register)** | `rateLimit({ max: 5/hour })` | Mass account creation |
+| **JWT verification** | `jwt.verify(token, JWT_SECRET)` | Unauthenticated access to protected routes |
+| **Input validation** | Length checks, type checks | Code injection via oversized payloads |
+| **bcrypt hashing** | `bcrypt.hash(password, 12)` | Credential exposure if DB is breached |
+| **userId scoping** | `Analysis.find({ userId })` | Cross-user data leakage |
+| **Password not returned** | `.select("-password")` | Hash never exposed in API responses |
+
+---
+
+### 13.3 JWT Token Details
+
+| Property | Value | Reason |
+|---|---|---|
+| **Algorithm** | HS256 (default) | Symmetric \u2014 fast, sufficient for single-server |
+| **Expiry** | `7d` (7 days) | Balance between security and UX (no frequent re-login) |
+| **Payload** | `{ id, name, email, iat, exp }` | Minimal \u2014 never include sensitive data in JWT |
+| **Storage** | `localStorage` | Accessible across page refreshes |
+| **Header format** | `Authorization: Bearer <token>` | Standard OAuth2 Bearer scheme |
+| **Secret** | `JWT_SECRET` env var | Long random string, never committed to Git |
+
+**Token lifecycle:**
+```
+Registration/Login → token issued (7 day expiry)
+      │
+      ├── Page reload → AuthContext reads from localStorage → still authenticated
+      ├── 401/403 from API → AuthContext.logout() → LoginPage shown
+      └── User clicks Sign Out → localStorage cleared → LoginPage shown
+```
+
+---
+
+### 13.4 `authMiddleware.js` \u2014 Implementation
+
+```js
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_in_prod";
+
+function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Access denied. No token provided." });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;   // { id, name, email } available to all route handlers
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: "Invalid or expired token." });
+  }
+}
+
+module.exports = verifyToken;
+```
+
+Applied to: `POST /analyze`, `GET /history`, `POST /ask-ai`, `GET /auth/me`
+NOT applied to: `POST /auth/register`, `POST /auth/login`, `GET /` (health check)
+
+---
+
+### 13.5 Password Security \u2014 bcrypt
+
+```js
+// Registration: hash before storing
+const hashed = await bcrypt.hash(password, 12);
+// 12 salt rounds = ~250ms per hash — slow enough to deter brute force
+// even with a breached database, cracking takes billions of years at scale
+
+// Login: compare submitted password against stored hash
+const isMatch = await bcrypt.compare(password, user.password);
+// bcrypt.compare is timing-safe — no timing attack possible
+```
+
+**Why 12 rounds:** Each round doubles the computation time. At 12 rounds, hashing takes ~250ms on modern hardware. An attacker with a breached DB can only attempt ~4 guesses/second per core, making brute-force of strong passwords computationally infeasible.
+
+---
+
+### 13.6 New Files Added in v2.0
+
+| File | Purpose |
+|---|---|
+| `backend/models/User.js` | Mongoose User schema (name, email, hashed password) |
+| `backend/models/Analysis.js` | Mongoose Analysis schema (moved from inline in server.js, added userId) |
+| `backend/routes/auth.js` | `/auth/register`, `/auth/login`, `/auth/me` with rate limiters |
+| `backend/middleware/authMiddleware.js` | JWT verification middleware |
+| `frontend/src/context/AuthContext.js` | Global auth state, localStorage persistence |
+| `frontend/src/components/LoginPage.js` | Glassmorphism login UI with error handling |
+| `frontend/src/components/RegisterPage.js` | Register UI with password strength meter |
+
+---
+
+### 13.7 Production Security Checklist
+
+- [ ] `JWT_SECRET` set to a 64+ character random string in Render environment variables
+- [ ] `JWT_SECRET` NOT committed to Git (confirmed in `.gitignore`)
+- [ ] `FRONTEND_URL` set to your Render frontend URL in backend environment
+- [ ] MongoDB Atlas IP whitelist includes only Render outbound IPs
+- [ ] All `.env` files present in `.gitignore`
+- [ ] CORS origin list does NOT include wildcard `*`
+- [ ] Rate limiting confirmed active (check server startup logs)
+- [ ] `FLASK_ENV=production` set on ML service (disables Flask debug mode)

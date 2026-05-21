@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { useAuth } from '../context/AuthContext';
 
 const CodeBlock = ({ inline, className, children, ...props }) => {
   const [copied, setCopied] = useState(false);
@@ -40,6 +41,7 @@ const CodeBlock = ({ inline, className, children, ...props }) => {
   }
   return <code className={className} style={{backgroundColor: 'rgba(255,255,255,0.1)', padding: '2px 4px', borderRadius: '4px', color: 'var(--primary)'}} {...props}>{children}</code>;
 };function AiAssistant({ code }) {
+  const { token } = useAuth();
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,7 +118,11 @@ const CodeBlock = ({ inline, className, children, ...props }) => {
 
     try {
       const res = await fetch(`${BACKEND_URL}/ask-ai`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({ code, question: q, history: history.slice(-6) }) // Send last 6 messages
       });
       const data = await res.json();
