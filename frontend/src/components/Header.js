@@ -4,27 +4,42 @@ function Header({ darkMode, setDarkMode, userSlot }) {
   return (
     <header style={{
       height: "60px",
-      backgroundColor: "var(--bg-main)", // Matches body bg for cleaner look
+      backgroundColor: "var(--bg-main)",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       padding: "0 20px",
-      flexShrink: 0
+      flexShrink: 0,
+      borderBottom: "1px solid rgba(108, 99, 255, 0.15)"
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-        
+
         {/* Brand / Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ 
-            width: "12px", 
-            height: "12px", 
-            backgroundColor: "var(--primary)", 
-            borderRadius: "50%",
-            boxShadow: "0 0 10px var(--primary)"
-          }}></div>
-          <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: "700", letterSpacing: "1px" }}>
+          <img
+            src="/codemind-logo.png"
+            alt="CodeMind AI Logo"
+            style={{
+              height: "36px",
+              width: "36px",
+              objectFit: "contain",
+              borderRadius: "8px",
+              filter: "drop-shadow(0 0 8px rgba(108, 99, 255, 0.6))",
+              animation: "logoPulse 3s ease-in-out infinite"
+            }}
+          />
+          <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: "700", letterSpacing: "1px", fontFamily: "'Inter', sans-serif" }}>
             <span style={{ color: "var(--text-main)" }}>CODE</span>
             <span style={{ color: "var(--primary)" }}>MIND</span>
+            <span style={{
+              fontSize: "0.65rem",
+              fontWeight: "600",
+              color: "#00D4FF",
+              marginLeft: "4px",
+              letterSpacing: "2px",
+              verticalAlign: "middle",
+              opacity: 0.9
+            }}>AI</span>
           </h2>
         </div>
       </div>
@@ -48,8 +63,15 @@ function Header({ darkMode, setDarkMode, userSlot }) {
           {darkMode ? "🔆" : "🌙"}
         </button>
       </div>
+
+      <style>{`
+        @keyframes logoPulse {
+          0%, 100% { filter: drop-shadow(0 0 8px rgba(108, 99, 255, 0.6)); }
+          50% { filter: drop-shadow(0 0 16px rgba(0, 212, 255, 0.8)); }
+        }
+      `}</style>
     </header>
   );
 }
 
-export default Header;
+export default Header;

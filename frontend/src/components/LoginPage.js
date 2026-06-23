@@ -49,15 +49,14 @@ export default function LoginPage({ onSwitchToRegister }) {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
-          <div className="auth-logo-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#06b6d4" strokeWidth="2" strokeLinejoin="round" />
-              <path d="M2 17l10 5 10-5" stroke="#06b6d4" strokeWidth="2" strokeLinejoin="round" />
-              <path d="M2 12l10 5 10-5" stroke="#818cf8" strokeWidth="2" strokeLinejoin="round" />
-            </svg>
-          </div>
+          <img
+            src="/codemind-logo.png"
+            alt="CodeMind AI"
+            className="auth-logo-img"
+          />
           <span className="auth-logo-text">
-            Code<span style={{ color: "var(--primary)" }}>Mind</span> AI
+            Code<span style={{ color: "var(--primary)" }}>Mind</span>
+            <span style={{ color: "#00D4FF", fontSize: "0.75em", marginLeft: "3px", letterSpacing: "2px" }}>AI</span>
           </span>
         </div>
 

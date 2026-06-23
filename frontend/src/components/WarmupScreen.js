@@ -100,8 +100,16 @@ export default function WarmupScreen({ onReady }) {
       <div style={styles.card}>
 
         {/* Logo */}
-        <div style={styles.logo}>
-          Code<span style={{ color: "#06b6d4" }}>Mind</span> AI
+        <div style={styles.logoWrapper}>
+          <img
+            src="/codemind-logo.png"
+            alt="CodeMind AI"
+            style={styles.logoImg}
+          />
+          <div style={styles.logo}>
+            Code<span style={{ color: "#6C63FF" }}>Mind</span>
+            <span style={{ color: "#00D4FF", fontSize: "1.2rem", marginLeft: "6px", letterSpacing: "3px" }}>AI</span>
+          </div>
         </div>
 
         {/* Status */}
@@ -194,11 +202,25 @@ const styles = {
     width: "90%",
     boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
   },
+  logoWrapper: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "12px",
+    marginBottom: "12px",
+  },
+  logoImg: {
+    width: "48px",
+    height: "48px",
+    objectFit: "contain",
+    borderRadius: "10px",
+    filter: "drop-shadow(0 0 12px rgba(108, 99, 255, 0.7))",
+    animation: "logoPulse 3s ease-in-out infinite",
+  },
   logo: {
     fontSize: "2rem",
     fontWeight: "800",
     color: "#f8fafc",
-    marginBottom: "12px",
     letterSpacing: "-0.5px",
   },
   subtitle: {
