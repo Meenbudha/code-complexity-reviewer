@@ -1,6 +1,6 @@
 import React from 'react';
 
-function Header({ darkMode, setDarkMode, userSlot }) {
+function Header({ userSlot, onOpenPricing, isPro }) {
   return (
     <header style={{
       height: "60px",
@@ -15,7 +15,7 @@ function Header({ darkMode, setDarkMode, userSlot }) {
       <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
 
         {/* Brand / Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }} onClick={onOpenPricing ? () => {} : null}>
           <img
             src="/codemind-logo.png"
             alt="CodeMind AI Logo"
@@ -44,24 +44,34 @@ function Header({ darkMode, setDarkMode, userSlot }) {
         </div>
       </div>
 
-      {/* Right side — user badge + theme toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      {/* Right side — Pro upgrade button + user badge */}
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {onOpenPricing && (
+          <button
+            onClick={onOpenPricing}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              backgroundColor: isPro ? "rgba(245, 158, 11, 0.15)" : "linear-gradient(135deg, #06b6d4, #8b5cf6)",
+              background: isPro ? "rgba(245, 158, 11, 0.15)" : "linear-gradient(135deg, #06b6d4, #8b5cf6)",
+              border: isPro ? "1px solid #f59e0b" : "none",
+              color: isPro ? "#f59e0b" : "#000",
+              padding: "7px 16px",
+              borderRadius: "20px",
+              fontWeight: "800",
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              boxShadow: isPro ? "none" : "0 0 15px rgba(6, 182, 212, 0.4)",
+              transition: "transform 0.2s, box-shadow 0.2s"
+            }}
+            title={isPro ? "View Pro Membership" : "Upgrade to CodeMind Pro"}
+          >
+            <span>{isPro ? "👑 Pro Member" : "⚡ Go Pro"}</span>
+          </button>
+        )}
+
         {userSlot && userSlot}
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          style={{
-            background: "transparent",
-            border: "1px solid var(--border)",
-            color: "var(--text-main)",
-            padding: "6px 12px",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontSize: "1.2rem"
-          }}
-          title="Toggle Theme"
-        >
-          {darkMode ? "🔆" : "🌙"}
-        </button>
       </div>
 
       <style>{`

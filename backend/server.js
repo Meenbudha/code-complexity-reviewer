@@ -93,34 +93,42 @@ app.post("/analyze", verifyToken, async (req, res) => {
 
     const codeHash = hashCode(code);
 
-    // Cache lookup — analysis results are not user-specific, so global cache is fine
-    const cached = await Analysis.findOne({ codeHash }).sort({ timestamp: -1 });
-    if (cached) {
-      console.log(`⚡ Cache HIT  [${codeHash.slice(0, 8)}…] — skipping AI call`);
-      return res.json({ ...cached.result, _id: cached._id, _cached: true });
+    // Try AI analysis via ML Service first
+    try {
+      console.log(`🤖 Requesting fresh AI analysis [${codeHash.slice(0, 8)}…]`);
+      const response = await axios.post(
+        `${ML_SERVICE_URL}/analyze`,
+        { code, language },
+        { headers: { "Content-Type": "application/json" }, timeout: 40000 }
+      );
+
+      const resultData = response.data;
+
+      // Save analysis to DB for current user
+      const newAnalysis = new Analysis({
+        userId: req.user.id,
+        code,
+        language,
+        result: resultData,
+        codeHash
+      });
+      await newAnalysis.save();
+
+      return res.json({ ...resultData, _id: newAnalysis._id, _cached: false });
+
+    } catch (mlError) {
+      console.warn("⚠️  ML Service AI call failed/unavailable, checking DB cache for fallback:", mlError.message);
+      
+      // Fallback: If AI is not available, check DB cache for previously stored result
+      const cached = await Analysis.findOne({ codeHash }).sort({ timestamp: -1 });
+      if (cached) {
+        console.log(`⚡ Fallback to stored DB result [${codeHash.slice(0, 8)}…]`);
+        return res.json({ ...cached.result, _id: cached._id, _cached: true });
+      }
+
+      // Re-throw if no DB cache fallback exists to handle with standard error responses
+      throw mlError;
     }
-    console.log(`🔍 Cache MISS [${codeHash.slice(0, 8)}…] — calling ML service`);
-
-    // Call ML Service
-    const response = await axios.post(
-      `${ML_SERVICE_URL}/analyze`,
-      { code, language },
-      { headers: { "Content-Type": "application/json" }, timeout: 40000 }
-    );
-
-    const resultData = response.data;
-
-    // FIX #1 (Critical): Save with userId so this record belongs to the authenticated user
-    const newAnalysis = new Analysis({
-      userId: req.user.id,   // ✅ ADDED — scopes this record to the logged-in user
-      code,
-      language,
-      result: resultData,
-      codeHash
-    });
-    await newAnalysis.save();
-
-    res.json({ ...resultData, _id: newAnalysis._id, _cached: false });
 
   } catch (error) {
     if (error.code === "ECONNABORTED") {

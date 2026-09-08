@@ -6,6 +6,7 @@ import ResultPanel from "./components/ResultPanel";
 import ComplexityGraph from "./components/ComplexityGraph";
 import AiAssistant from "./components/AiAssistant";
 import WarmupScreen from "./components/WarmupScreen";
+import PricingPage from "./components/PricingPage";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -32,8 +33,8 @@ function AuthGate() {
 // ─────────────────────────────────────────────────────────────────────────────
 // USER BADGE — shown in the top-right corner when logged in
 // ─────────────────────────────────────────────────────────────────────────────
-function UserBadge() {
-  const { user, logout } = useAuth();
+function UserBadge({ analysisCount = 0 }) {
+  const { user, logout, isPro } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -48,73 +49,191 @@ function UserBadge() {
     ? user.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
+  const memberSince = (user?.createdAt && !isNaN(new Date(user.createdAt).getTime()))
+    ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : new Date().toLocaleDateString("en-US", { month: "short", year: "numeric" });
+
   return (
     <div ref={ref} style={{ position: "relative" }}>
+      <style>{`
+        @keyframes profileDropIn {
+          from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)   scale(1); }
+        }
+        @keyframes avatarPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(6,182,212,0.5); }
+          50%       { box-shadow: 0 0 0 5px rgba(6,182,212,0); }
+        }
+        .user-badge-trigger:hover { border-color: rgba(6,182,212,0.6) !important; background: rgba(30,41,59,0.9) !important; }
+        .profile-menu-item:hover  { background: rgba(255,255,255,0.05) !important; }
+        .profile-signout:hover    { background: rgba(239,68,68,0.1) !important; color: #f87171 !important; }
+        .profile-stat:hover       { background: rgba(6,182,212,0.08) !important; border-color: rgba(6,182,212,0.3) !important; }
+      `}</style>
+
+      {/* ── Trigger button ── */}
       <button
         id="user-badge-btn"
+        className="user-badge-trigger"
         onClick={() => setOpen(v => !v)}
         style={{
-          display: "flex", alignItems: "center", gap: "8px",
-          background: "var(--bg-panel)", border: "1px solid var(--border)",
-          borderRadius: "8px", padding: "5px 10px 5px 6px",
+          display: "flex", alignItems: "center", gap: "9px",
+          background: "rgba(30,41,59,0.7)",
+          border: isPro ? "1px solid rgba(245,158,11,0.6)" : "1px solid rgba(51,65,85,0.8)",
+          borderRadius: "12px", padding: "5px 12px 5px 6px",
           cursor: "pointer", color: "var(--text-main)",
-          transition: "border-color 0.2s, box-shadow 0.2s",
+          transition: "all 0.2s ease",
+          backdropFilter: "blur(8px)",
+          boxShadow: isPro ? "0 0 10px rgba(245,158,11,0.2)" : "0 2px 8px rgba(0,0,0,0.2)",
         }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = "var(--primary)"}
-        onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}
       >
-        {/* Avatar circle */}
+        {/* Avatar */}
         <div style={{
-          width: "28px", height: "28px", borderRadius: "50%",
-          background: "linear-gradient(135deg, var(--primary), #8b5cf6)",
+          width: "30px", height: "30px", borderRadius: "50%",
+          background: isPro ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)" : "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "0.7rem", fontWeight: "700", color: "#000", flexShrink: 0,
+          fontSize: "0.65rem", fontWeight: "800", color: "#fff", flexShrink: 0,
+          boxShadow: isPro ? "0 0 0 2px rgba(245,158,11,0.5)" : "0 0 0 2px rgba(6,182,212,0.4)",
+          animation: "avatarPulse 3s ease-in-out infinite",
         }}>
           {initials}
         </div>
-        <span style={{ fontSize: "0.85rem", fontWeight: "500", maxWidth: "100px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "0.85rem", fontWeight: "600", maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {user?.name || "User"}
         </span>
-        {/* Chevron */}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-          style={{ transform: open ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s", color: "var(--text-dim)", flexShrink: 0 }}>
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.25s ease", color: "var(--text-dim)", flexShrink: 0 }}>
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
 
-      {/* Dropdown */}
+      {/* ── Dropdown panel ── */}
       {open && (
         <div style={{
-          position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 100,
-          background: "var(--bg-panel)", border: "1px solid var(--border)",
-          borderRadius: "10px", padding: "8px", minWidth: "180px",
-          boxShadow: "0 12px 30px rgba(0,0,0,0.4)",
-          animation: "cardEntrance 0.2s ease forwards",
+          position: "absolute", top: "calc(100% + 10px)", right: 0, zIndex: 200,
+          background: "linear-gradient(160deg, rgba(22,32,50,0.98) 0%, rgba(15,23,42,0.98) 100%)",
+          border: "1px solid rgba(51,65,85,0.8)",
+          borderRadius: "16px", minWidth: "260px",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(6,182,212,0.08), inset 0 1px 0 rgba(255,255,255,0.05)",
+          animation: "profileDropIn 0.22s cubic-bezier(0.16,1,0.3,1) forwards",
+          backdropFilter: "blur(20px)",
+          overflow: "hidden",
         }}>
-          <div style={{ padding: "8px 10px 10px", borderBottom: "1px solid var(--border)", marginBottom: "6px" }}>
-            <p style={{ margin: 0, fontWeight: "600", fontSize: "0.85rem", color: "var(--text-main)" }}>{user?.name}</p>
-            <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.email}</p>
+
+          {/* ── Top gradient banner ── */}
+          <div style={{
+            height: "52px",
+            background: isPro ? "linear-gradient(135deg, rgba(245,158,11,0.2) 0%, rgba(217,119,6,0.2) 100%)" : "linear-gradient(135deg, rgba(6,182,212,0.18) 0%, rgba(139,92,246,0.18) 100%)",
+            borderBottom: "1px solid rgba(51,65,85,0.5)",
+            position: "relative",
+          }}>
+            <div style={{
+              position: "absolute", top: "6px", right: "10px",
+              fontSize: "0.65rem", fontWeight: "700", letterSpacing: "1px",
+              color: isPro ? "#f59e0b" : "#06b6d4", textTransform: "uppercase",
+              background: isPro ? "rgba(245,158,11,0.15)" : "rgba(6,182,212,0.12)",
+              border: isPro ? "1px solid rgba(245,158,11,0.4)" : "1px solid rgba(6,182,212,0.25)",
+              borderRadius: "20px", padding: "3px 9px",
+            }}>
+              {isPro ? "👑 PRO MEMBER" : "FREE MEMBER"}
+            </div>
           </div>
-          <button
-            id="logout-btn"
-            onClick={() => { setOpen(false); logout(); }}
-            style={{
-              width: "100%", display: "flex", alignItems: "center", gap: "8px",
-              background: "none", border: "none", borderRadius: "6px",
-              padding: "8px 10px", cursor: "pointer",
-              color: "#ef4444", fontSize: "0.85rem", fontWeight: "600",
-              transition: "background 0.15s",
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
-            onMouseLeave={e => e.currentTarget.style.background = "none"}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign out
-          </button>
+
+          {/* ── Avatar + name (overlapping the banner) ── */}
+          <div style={{ padding: "0 18px 16px", marginTop: "-22px" }}>
+            <div style={{
+              width: "44px", height: "44px", borderRadius: "50%",
+              background: "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: "1rem", fontWeight: "800", color: "#fff",
+              border: "3px solid rgba(15,23,42,0.98)",
+              boxShadow: "0 0 0 1px rgba(6,182,212,0.4), 0 4px 16px rgba(6,182,212,0.25)",
+              marginBottom: "10px",
+            }}>
+              {initials}
+            </div>
+
+            <div style={{ fontWeight: "700", fontSize: "1rem", color: "var(--text-hero)", lineHeight: 1.2 }}>
+              {user?.name || "User"}
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "3px", display: "flex", alignItems: "center", gap: "5px" }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+              </svg>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "190px" }}>
+                {user?.email}
+              </span>
+            </div>
+
+            {/* Member since */}
+            <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "6px" }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span style={{ fontSize: "0.7rem", color: "#06b6d4", fontWeight: "600" }}>
+                Member since {memberSince}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Divider ── */}
+          <div style={{ height: "1px", background: "rgba(51,65,85,0.6)", margin: "0 18px 14px" }} />
+
+          {/* ── Stats row ── */}
+          <div style={{ display: "flex", gap: "8px", padding: "0 18px 16px" }}>
+            {[
+              { label: "Analyses", value: analysisCount > 0 ? analysisCount : "0", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+              { label: "AI Chats", value: isPro ? "∞ Pro" : "Active", icon: <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
+            ].map(stat => (
+              <div
+                key={stat.label}
+                className="profile-stat"
+                style={{
+                  flex: 1, textAlign: "center",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(51,65,85,0.5)",
+                  borderRadius: "10px", padding: "10px 6px",
+                  transition: "all 0.2s",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: "5px" }}>{stat.icon}</div>
+                <div style={{ fontWeight: "700", fontSize: "1rem", color: "var(--text-hero)" }}>{stat.value}</div>
+                <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", marginTop: "2px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Divider ── */}
+          <div style={{ height: "1px", background: "rgba(51,65,85,0.6)", margin: "0 18px 10px" }} />
+
+          {/* ── Menu items ── */}
+          <div style={{ padding: "0 10px 10px" }}>
+            {/* Sign out */}
+            <button
+              id="logout-btn"
+              className="profile-signout"
+              onClick={() => { setOpen(false); logout(); }}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: "10px",
+                background: "none", border: "none", borderRadius: "10px",
+                padding: "10px 12px", cursor: "pointer",
+                color: "#ef4444", fontSize: "0.85rem", fontWeight: "600",
+                transition: "all 0.15s",
+              }}
+            >
+              <div style={{
+                width: "28px", height: "28px", borderRadius: "8px",
+                background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </div>
+              Sign out
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -125,19 +244,20 @@ function UserBadge() {
 // MAIN APP — the full dashboard (only shown when authenticated)
 // ─────────────────────────────────────────────────────────────────────────────
 function MainApp() {
-  const { token } = useAuth();
+  const { token, isPro } = useAuth();
 
   // --- Warmup gate: show splash until backend + ML service are awake ---
   const [isWarmedUp, setIsWarmedUp] = useState(false);
   const handleWarmupReady = useCallback(() => setIsWarmedUp(true), []);
 
+  const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "pricing"
+
   const [code, setCode] = useState("");
-  const [language, setLanguage] = useState("c");
+  const [language, setLanguage] = useState("auto");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Theme & Layout
-  const [darkMode, setDarkMode] = useState(true);
+  // Layout
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Data State
@@ -273,18 +393,33 @@ function MainApp() {
     }
   };
 
-  const loadFromHistory = (item) => {
+  const loadFromHistory = async (item) => {
+    setCode(item.code);
+    setLanguage(item.language);
     setResult(null);
     setLoading(true);
     setHasAnalyzed(true);
+    setRefreshKey(prev => prev + 1);
 
-    setTimeout(() => {
-      setCode(item.code);
-      setLanguage(item.language);
+    try {
+      const response = await fetch(`${BACKEND_URL}/analyze`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ code: item.code, language: item.language })
+      });
+      const data = await response.json();
+      if (data && !data.error) {
+        setResult(data);
+      } else {
+        // Fall back to stored DB result if AI endpoint returns an error
+        setResult(item.result);
+      }
+    } catch (error) {
+      // Fall back to stored DB result if network request fails
       setResult(item.result);
+    } finally {
       setLoading(false);
-      setRefreshKey(prev => prev + 1);
-    }, 300);
+    }
   };
 
   const resetAnalysis = () => {
@@ -298,22 +433,38 @@ function MainApp() {
     return <WarmupScreen onReady={handleWarmupReady} />;
   }
 
+  if (activeTab === "pricing") {
+    return <PricingPage onBackToDashboard={() => setActiveTab("dashboard")} />;
+  }
+
   return (
-    <div className={`app-shell ${darkMode ? '' : 'light-mode'}`}>
+    <div className="app-shell">
 
       <Sidebar
         isOpen={isSidebarOpen}
         history={history}
-        onSelect={loadFromHistory}
-        onNew={resetAnalysis}
-        darkMode={darkMode}
+        onSelect={(item) => {
+          setActiveTab("dashboard");
+          loadFromHistory(item);
+        }}
+        onNew={() => {
+          setActiveTab("dashboard");
+          resetAnalysis();
+        }}
+        darkMode={true}
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         isLoading={isHistoryLoading}
+        onOpenPricing={() => setActiveTab("pricing")}
+        isPro={isPro}
       />
 
       <div className="main-content">
         {/* Header with user badge injected via userSlot prop */}
-        <Header darkMode={darkMode} setDarkMode={setDarkMode} userSlot={<UserBadge />} />
+        <Header
+          userSlot={<UserBadge analysisCount={history.length} />}
+          onOpenPricing={() => setActiveTab("pricing")}
+          isPro={isPro}
+        />
 
         <div className="scrollable-workspace">
           <div style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
@@ -344,15 +495,26 @@ function MainApp() {
               >
                 <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <label style={{ color: "var(--text-dim)" }}>Language:</label>
+                    <label style={{ color: "var(--text-dim)", fontWeight: "600", fontSize: "0.9rem" }}>Language:</label>
                     <select
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
-                      style={{ backgroundColor: "var(--bg-panel)", color: "var(--text-main)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: "4px", outline: "none" }}
+                      style={{ backgroundColor: "var(--bg-panel)", color: "var(--text-main)", border: "1px solid var(--border)", padding: "6px 12px", borderRadius: "6px", outline: "none", fontWeight: "500" }}
                     >
-                      <option value="c">C Language</option>
-                      <option value="java">Java</option>
+                      <option value="auto">⚡ Auto-Detect Language</option>
                       <option value="python">Python</option>
+                      <option value="javascript">JavaScript / TypeScript</option>
+                      <option value="cpp">C / C++</option>
+                      <option value="java">Java</option>
+                      <option value="csharp">C# (.NET)</option>
+                      <option value="go">Go</option>
+                      <option value="rust">Rust</option>
+                      <option value="php">PHP</option>
+                      <option value="ruby">Ruby</option>
+                      <option value="swift">Swift</option>
+                      <option value="kotlin">Kotlin</option>
+                      <option value="sql">SQL</option>
+                      <option value="other">Any Language</option>
                     </select>
                   </div>
                   <button
@@ -374,7 +536,7 @@ function MainApp() {
                   </button>
                 </div>
                 <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", boxShadow: "0 0 20px var(--shadow)", backgroundColor: "var(--bg-panel)", display: "flex", flexDirection: "column" }}>
-                  <CodeEditor code={code} setCode={setCode} darkMode={darkMode} />
+                  <CodeEditor code={code} setCode={setCode} darkMode={true} />
                 </div>
               </div>
 
@@ -395,8 +557,8 @@ function MainApp() {
                     ) : (
                       result && (
                         <>
-                          <ResultPanel key={refreshKey} result={result} loading={loading} darkMode={darkMode} />
-                          {result.time && result.time !== "N/A" && <ComplexityGraph key={refreshKey} complexity={result.time} darkMode={darkMode} />}
+                          <ResultPanel key={refreshKey} result={result} loading={loading} darkMode={true} />
+                          {result.time && result.time !== "N/A" && <ComplexityGraph key={refreshKey} complexity={result.time} darkMode={true} />}
                         </>
                       )
                     )}
@@ -438,6 +600,12 @@ function MainApp() {
 // ROOT — wraps everything in AuthProvider
 // ─────────────────────────────────────────────────────────────────────────────
 function App() {
+  const [isWarmedUp, setIsWarmedUp] = useState(false);
+
+  if (!isWarmedUp) {
+    return <WarmupScreen onReady={() => setIsWarmedUp(true)} />;
+  }
+
   return (
     <AuthProvider>
       <AuthGate />

@@ -34,8 +34,22 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("cm_token");
   }, []);
 
+  /** Upgrade user to Pro plan */
+  const upgradeToPro = useCallback((planDetails = {}) => {
+    setUser(prevUser => {
+      const updated = {
+        ...(prevUser || {}),
+        isPro: true,
+        planType: planDetails.planType || "Monthly",
+        proExpiry: planDetails.proExpiry || "2027-09-08"
+      };
+      localStorage.setItem("cm_user", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
+    <AuthContext.Provider value={{ user, token, login, logout, upgradeToPro, isPro: !!user?.isPro, isAuthenticated: !!token }}>
       {children}
     </AuthContext.Provider>
   );

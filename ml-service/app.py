@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import socket
 import boto3
 from botocore.config import Config as BotocoreConfig
@@ -66,10 +67,8 @@ validate_env()
 # ============================================================
 # --- CONSTANTS ---
 # ============================================================
-# FIX #2 (Critical): AI_TIMEOUT_SECONDS was previously defined AFTER
-# it was used in the Gemini client init (line ~90), causing a NameError
-# on startup when GEMINI_API_KEY is set. Moved here.
-AI_TIMEOUT_SECONDS = 10
+AI_TIMEOUT_SECONDS = 60
+GEMINI_MODEL_ID = "gemini-flash-lite-latest"
 
 # ============================================================
 # --- CLIENT INITIALIZATION: GEMINI + AWS BEDROCK ---
@@ -95,7 +94,7 @@ if GEMINI_API_KEY:
         # Must be set at client level — not in generate_content() — for cross-version compatibility
         gemini_client = genai.Client(
             api_key=GEMINI_API_KEY,
-            http_options=types.HttpOptions(timeout=AI_TIMEOUT_SECONDS * 1000)
+            http_options=types.HttpOptions(timeout=AI_TIMEOUT_SECONDS * 2000)
         )
         print("✅ Gemini AI Client Initialized")
     except Exception as e:
@@ -131,22 +130,63 @@ else:
 
 
 # ============================================================
-# --- LANGUAGE DETECTION ---
+# --- CODE VALIDATION & LANGUAGE DETECTION ---
 # ============================================================
+def is_programming_code(code):
+    """
+    Validates whether the provided text resembles actual programming code or pseudo-code.
+    Returns True for any valid programming language, False for plain non-code prose.
+    """
+    stripped = code.strip()
+    if not stripped or len(stripped) < 2:
+        return False
+
+    # Check for common programming keywords across all major languages
+    code_keywords = r'\b(def|function|fn|func|var|let|const|val|dim|class|struct|interface|type|enum|public|private|protected|static|final|void|int|float|double|char|bool|boolean|string|auto|import|from|include|require|package|using|namespace|return|if|elif|else|for|foreach|while|do|switch|case|break|continue|try|catch|except|finally|throw|raise|new|null|nil|None|true|false|True|False|SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|CREATE|TABLE|html|div|span|style|script)\b'
+    
+    # Check for programming syntax operators / constructs
+    syntax_indicators = [
+        r';\s*$',                           # Semicolon line termination
+        r'[{}]',                            # Curly braces
+        r'\(.*\)\s*[{:]',                    # Function headers: fn(...) { or def (...):
+        r'\b\w+\s*\([^)]*\)',                # Function invocation: foo(x)
+        r'\b\w+\s*=\s*.+',                   # Assignment: a = 5
+        r'//|/\*|#|<!--',                   # Code comments
+        r'->|=>|::|\+=|-=|\*=|/=|==|!=|<=|>=', # Code operators
+        r'\[.*\]',                           # Array indexing or literals
+        r'^\s*(if|for|while|def|class)\b',   # Control flow start
+    ]
+
+    has_keyword = bool(re.search(code_keywords, stripped, re.IGNORECASE))
+    has_syntax = any(re.search(pat, stripped, re.MULTILINE) for pat in syntax_indicators)
+
+    # If it has a code keyword OR syntax indicators, it's valid code
+    if has_keyword or has_syntax:
+        return True
+
+    # Check basic code symbols
+    if re.search(r'[=+\-*/<>!&|^~%]', stripped):
+        return True
+
+    return False
+
+
 def detect_language(code):
     if re.search(r'\bdef\s+\w+', code) or re.search(r'\b(if|elif|else|for|while|class|try|except|finally|with)\b.*:\s*$', code, re.MULTILINE):
         return "python"
-    if re.search(r'^\s*(import|from)\s+[\w\.]+', code, re.MULTILINE) and ";" not in code:
-        return "python"
-    if re.search(r'^\s*#include\s+[<"]', code, re.MULTILINE) or re.search(r'\bprintf\s*\(', code):
-        return "c"
-    if re.search(r'\bint\s+main\s*\(', code) and "{" in code:
-        return "c"
-    if re.search(r'\b(public\s+|private\s+|protected\s+)?class\s+\w+', code) and re.search(r'\bpublic\s+static\s+void\s+main\s*\(', code):
+    if re.search(r'\b(function|var|let|const|console\.log|=>)\b', code):
+        return "javascript"
+    if re.search(r'^\s*#include\s+[<"]', code, re.MULTILINE) or re.search(r'\b(printf|cout|std::)\b', code):
+        return "cpp"
+    if re.search(r'\b(public\s+|private\s+|protected\s+)?class\s+\w+', code) or re.search(r'\bSystem\.out\.println\s*\(', code):
         return "java"
-    if re.search(r'\bSystem\.out\.println\s*\(', code):
-        return "java"
-    return "unknown"
+    if re.search(r'\b(fn|pub fn|let mut|println!)\b', code):
+        return "rust"
+    if re.search(r'\b(func|package|import "fmt")\b', code):
+        return "go"
+    if re.search(r'\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)\b', code, re.IGNORECASE):
+        return "sql"
+    return "general"
 
 
 # ============================================================
@@ -307,16 +347,19 @@ def is_rate_limit_error(e):
 # ============================================================
 # --- AI PROVIDER 1: GEMINI ---
 # ============================================================
-def call_gemini(prompt, max_tokens=300):
+def call_gemini(prompt, max_tokens=300, model=GEMINI_MODEL_ID, json_mode=False):
     # http_options timeout is set at client init level (cross-version compatible)
     # Do NOT pass http_options here — older google-genai versions don't support it in generate_content()
+    config_args = {
+        "max_output_tokens": max_tokens,
+        "temperature": 0.2
+    }
+    if json_mode:
+        config_args["response_mime_type"] = "application/json"
     response = gemini_client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model,
         contents=[prompt],
-        config=types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.2
-        )
+        config=types.GenerateContentConfig(**config_args)
     )
     return response.text.strip()
 
@@ -349,23 +392,31 @@ def call_bedrock(prompt, max_tokens=300):
 # ============================================================
 # --- SMART AI ROUTER: Gemini → Bedrock → Offline ---
 # ============================================================
-def call_ai_with_fallback(prompt, max_tokens=300):
+def call_ai_with_fallback(prompt, max_tokens=300, json_mode=False):
     """
-    Tries Gemini first. On rate limit (429), waits 2s and retries once.
+    Tries Gemini models first. On transient 503/504 error, retries once after 1s.
     If still failing, falls back to AWS Bedrock, then offline.
     Returns (text, provider_used).
     """
-    # --- Attempt 1: Gemini ---
+    # --- Attempt 1: Gemini (tries primary model, then fallback model alias) ---
     if gemini_client:
-        try:
-            text = call_gemini(prompt, max_tokens)
-            print("✅ AI Response from: Gemini")
-            return text, "gemini"
-        except Exception as e:
-            if is_rate_limit_error(e):
-                print("⚡ Gemini rate limit hit. Switching to Bedrock immediately...")
-            else:
-                print(f"⚠️ Gemini error: {e}. Trying Bedrock...")
+        models_to_try = [GEMINI_MODEL_ID, "gemini-flash-latest"]
+        for m in models_to_try:
+            for attempt in range(2):
+                try:
+                    text = call_gemini(prompt, max_tokens, model=m, json_mode=json_mode)
+                    print(f"✅ AI Response from: Gemini ({m})")
+                    return text, "gemini"
+                except Exception as e:
+                    if attempt == 0 and any(kw in str(e).lower() for kw in ["503", "504", "unavailable", "deadline"]):
+                        print(f"⚠️ Gemini ({m}) transient error ({e}). Retrying in 1s...")
+                        time.sleep(1)
+                        continue
+                    if is_rate_limit_error(e):
+                        print(f"⚡ Gemini ({m}) rate limit / timeout hit. Trying next model or Bedrock...")
+                    else:
+                        print(f"⚠️ Gemini ({m}) error: {e}. Trying next model or Bedrock...")
+                    break
 
     # --- Attempt 2: AWS Bedrock ---
     if bedrock_client:
@@ -384,11 +435,15 @@ def call_ai_with_fallback(prompt, max_tokens=300):
 # --- CLEAN JSON FROM AI RESPONSE ---
 # ============================================================
 def extract_json(text):
-    """Strip markdown code fences and parse JSON."""
+    """Strip markdown code fences and parse JSON robustly."""
     text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        text = match.group(0)
+    else:
+        if text.startswith("```"):
+            text = re.sub(r"^```[a-z]*\n?", "", text)
+            text = re.sub(r"\n?```$", "", text)
     return json.loads(text.strip())
 
 
@@ -418,7 +473,7 @@ Baseline Offline Estimates: Time={offline_result['time']}, Space={offline_result
 3. Write 1-2 TIPS offering concrete code improvements or modern best practices.
 4. Each warning/tip MUST start with a concise label (e.g., "Nested Loop Risk:" or "Use a HashMap:").
 5. Each warning/tip MUST be a single sentence (max 20 words) explicitly tied to the provided code. No generic fluff.
-6. Do NOT output markdown code blocks (like ```json) or any conversational text. Return ONLY valid JSON.
+6. Return ONLY valid JSON matching the specified structure.
 </rules>
 
 <output_format>
@@ -436,10 +491,10 @@ Baseline Offline Estimates: Time={offline_result['time']}, Space={offline_result
 }}
 </output_format>"""
 
-    text, provider = call_ai_with_fallback(prompt, max_tokens=200)
+    text, provider = call_ai_with_fallback(prompt, max_tokens=1000, json_mode=True)
 
     if text is None:
-        offline_result["suggestions"].append("AI verification unavailable (both Gemini & Bedrock failed). Showing offline results.")
+        offline_result["suggestions"].append("CodeMind AI quota limit reached for standard tier. Showing static AST analysis results.")
         return offline_result, "offline"
 
     try:
@@ -490,19 +545,15 @@ def analyze():
         code = data.get('code', '')
         requested_language = data.get('language', '').lower()
 
-        if not code:
-            return error_response("No code provided.", 400)
+        if not code or not code.strip():
+            return error_response("No code provided. Please paste or write any programming code.", 400)
 
-        # Language detection & validation
-        detected_language = detect_language(code)
-        if requested_language and detected_language != "unknown":
-            if requested_language != detected_language:
-                return error_response(
-                    f"Language mismatch: selected {requested_language.capitalize()}, "
-                    f"but code looks like {detected_language.capitalize()}.",
-                    code=422,
-                    detail=f"detected:{detected_language}"
-                )
+        # Code validation check: verify user pasted actual programming code
+        if not is_programming_code(code):
+            return error_response(
+                "No programming code detected. Please paste or write valid code in any programming language (e.g. Python, JavaScript, C++, Java, Go, Rust, SQL, etc.).",
+                code=400
+            )
 
         # 1. Offline analysis (always works)
         offline_result = analyze_offline(code)
@@ -540,11 +591,18 @@ def ask_ai():
         history_section = f"\n\nPrevious Conversation Context:\n{history_text}"
 
     prompt = f"""<role>
-You are an Elite Senior Software Engineer mentoring a developer. Your communication style is direct, clear, and highly instructive.
+You are an Elite Senior Software Engineer and Computer Science Educator mentoring a developer. Your communication style is clear, structured, technical, and highly practical.
 </role>
 
 <task>
-Answer the developer's specific question regarding their code. Provide a concise, technically accurate, and directly applicable response following a strict markdown structure.
+Answer the developer's question directly and thoroughly based on their intent:
+
+1. IF THE DEVELOPER ASKS FOR CODE OR IMPLEMENTATION (e.g., "merge sort code", "write a binary search", "give code for X", "implement Y"):
+   - Provide the complete, clean, well-commented code snippet in Python (or the language specified/being analyzed) FIRST under `### 💻 Implementation`.
+   - Follow up with a clear step-by-step explanation of how the implementation works (`### 💡 How It Works`) and its Big-O complexity (`### 📊 Complexity Analysis`).
+
+2. IF THE DEVELOPER ASKS FOR AN EXPLANATION OR REVIEW (e.g., "explain proper", "how does this work", "review my code"):
+   - Provide a high-level overview (`### 💡 Core Explanation`), a detailed step-by-step walkthrough of the logic (`### 🔍 Step-by-Step Breakdown`), Big-O Time & Space complexity (`### 📊 Complexity Analysis`), and actionable recommendations (`### 🛠️ Key Takeaways`).
 </task>
 
 <context>{code_section}{history_section}
@@ -553,37 +611,20 @@ Current Developer's Question: {question}
 </context>
 
 <rules>
-1. Anchor your explanation strictly to the provided code context. Do not give abstract theory unless directly relevant.
-2. Use plain English and accessible language. Avoid unnecessary jargon, but use precise technical terms when appropriate.
-3. If the question pertains to performance, explicitly mention Big-O notation.
-4. Do NOT repeat or echo the developer's question.
-5. Output ONLY the formatted markdown response. No pleasantries or conversational filler.
-</rules>
+1. Always adapt your response structure to directly fulfill what the developer is asking for.
+2. When asked for code, ALWAYS include a fully functional, well-commented code snippet right away.
+3. Use clean Markdown formatting with clear headings, bullet points, and syntax-highlighted code blocks.
+4. Detail Big-O Time and Space complexity whenever discussing code or algorithms.
+5. Do NOT use conversational filler like 'Sure, here is...' — jump straight into the formatted markdown analysis.
+</rules>"""
 
-<output_format>
-Your response MUST be formatted EXACTLY using the following Markdown structure to maintain a premium, Claude-like analytical style:
-
-### 💡 Core Explanation
-[1-2 clear, dense sentences directly answering the developer's core question without fluff.]
-
-### 🔍 Analytical Breakdown
-*   **[Concept 1]:** [Brief explanation tied to the code]
-*   **[Concept 2]:** [Brief explanation tied to the code]
-*   **Complexity:** [Explicitly state Big-O Time and Space complexity if relevant]
-
-### 🛠️ Actionable Recommendation
-```[language]
-# [Concise code snippet demonstrating the fix or best practice]
-```
-</output_format>"""
-
-    text, provider = call_ai_with_fallback(prompt, max_tokens=500)
+    text, provider = call_ai_with_fallback(prompt, max_tokens=1500)
 
     if text is None:
         return error_response(
-            "Both AI providers are unavailable. Please try again later.",
+            "CodeMind AI assistant is currently experiencing high demand. Please try again later.",
             code=503,
-            detail="Gemini rate-limited and Bedrock unreachable or unconfigured."
+            detail="CodeMind AI compute engine rate-limited or capacity reached."
         )
 
     print(f"✅ /ask-ai answered by: {provider}")

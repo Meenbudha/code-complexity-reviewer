@@ -10,7 +10,7 @@ function SidebarBone({ width = "80%" }) {
   );
 }
 
-function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, isLoading }) {
+function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, isLoading, onOpenPricing, isPro }) {
   return (
     <div
       style={{
@@ -71,7 +71,7 @@ function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, is
               borderRadius: "16px",
               cursor: "pointer",
               color: "var(--text-dim)",
-              marginBottom: "30px",
+              marginBottom: "12px",
               transition: "background-color 0.2s",
               height: "44px",
               whiteSpace: "nowrap"
@@ -85,6 +85,33 @@ function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, is
               New Analysis
             </span>
           </div>
+
+          {/* Pro Subscription Button */}
+          {onOpenPricing && (
+            <div
+              onClick={onOpenPricing}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "10px 14px",
+                backgroundColor: isPro ? "rgba(245, 158, 11, 0.12)" : "rgba(6, 182, 212, 0.12)",
+                border: isPro ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(6, 182, 212, 0.3)",
+                borderRadius: "16px",
+                cursor: "pointer",
+                color: isPro ? "#f59e0b" : "#06b6d4",
+                marginBottom: "24px",
+                transition: "all 0.2s",
+                height: "44px",
+                whiteSpace: "nowrap"
+              }}
+              title="View Pro Subscription & Pricing"
+            >
+              <span style={{ fontSize: "1.2rem", lineHeight: 1 }}>{isPro ? "👑" : "⚡"}</span>
+              <span style={{ fontSize: "0.88rem", fontWeight: "700", marginLeft: "12px" }}>
+                {isPro ? "Pro Membership" : "Upgrade to Pro"}
+              </span>
+            </div>
+          )}
 
           {/* History Label */}
           <div style={{

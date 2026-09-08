@@ -63,7 +63,7 @@ router.post("/register", registerLimiter, async (req, res) => {
 
     res.status(201).json({
       token,
-      user: { id: user._id, name: user.name, email: user.email }
+      user: { id: user._id, name: user.name, email: user.email, createdAt: user.createdAt }
     });
   } catch (err) {
     console.error("Register error:", err.message);
@@ -98,7 +98,7 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email }
+      user: { id: user._id, name: user.name, email: user.email, createdAt: user.createdAt }
     });
   } catch (err) {
     console.error("Login error:", err.message);
@@ -113,7 +113,7 @@ router.get("/me", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
     if (!user) return res.status(404).json({ error: "User not found." });
-    res.json({ user: { id: user._id, name: user.name, email: user.email } });
+    res.json({ user: { id: user._id, name: user.name, email: user.email, createdAt: user.createdAt } });
   } catch (err) {
     res.status(500).json({ error: "Server error." });
   }
