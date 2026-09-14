@@ -350,6 +350,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
 
   // Layout Logic
   const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [mobileTab, setMobileTab] = useState("editor"); // "editor" | "results"
   const [topSectionHeight, setTopSectionHeight] = useState(window.innerHeight < 800 ? window.innerHeight * 0.6 : 600);
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef(null);
@@ -426,6 +427,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
     setResult(null);
     setLoading(true);
     setHasAnalyzed(true);
+    setMobileTab("results");
 
     try {
       const response = await fetch(`${BACKEND_URL}/analyze`, {
@@ -482,6 +484,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
     setResult(null);
     setLoading(true);
     setHasAnalyzed(true);
+    setMobileTab("results");
     setRefreshKey(prev => prev + 1);
 
     try {
@@ -509,6 +512,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
     setCode("");
     setResult(null);
     setHasAnalyzed(false);
+    setMobileTab("editor");
   };
 
   if (activeTab === "pricing") {
@@ -548,16 +552,52 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
         />
 
         <div className="scrollable-workspace">
-          <div className="workspace-container" style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
+          <div className="workspace-container" style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
 
             <div className={`welcome-hero ${hasAnalyzed ? 'hidden' : ''}`}>
-              <h1 style={{ fontSize: "2.5rem", marginBottom: "10px", color: "var(--text-hero)" }}>
+              <div className="welcome-badge">⚡ AI Code Intelligence</div>
+              <h1 className="welcome-title">
                 Code<span style={{ color: "var(--primary)" }}>Mind</span> AI
               </h1>
-              <p style={{ color: "var(--text-dim)", fontSize: "1.1rem" }}>
+              <p className="welcome-sub">
                 Advanced Complexity Analysis &amp; AI Review
               </p>
             </div>
+
+            {/* Mobile View Switcher (Only visible on mobile when analyzed) */}
+            {hasAnalyzed && (
+              <div className="mobile-view-tabs">
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("editor")}
+                  className={`mobile-tab-btn ${mobileTab === "editor" ? "active" : ""}`}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <polyline points="16 18 22 12 16 6" />
+                    <polyline points="8 6 2 12 8 18" />
+                  </svg>
+                  <span>Code Editor</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileTab("results")}
+                  className={`mobile-tab-btn ${mobileTab === "results" ? "active" : ""}`}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                  <span>Complexity Insights</span>
+                  {result && (
+                    <span className="mobile-tab-badge">
+                      {result.time || "✓"}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
 
             <div
               ref={containerRef}
@@ -572,7 +612,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
               }}
             >
               <div
-                className={`editor-wrapper ${hasAnalyzed ? 'analyzed' : 'initial'}`}
+                className={`editor-wrapper ${hasAnalyzed ? 'analyzed' : 'initial'} ${hasAnalyzed && mobileTab === 'results' ? 'mobile-hide-on-tab' : ''}`}
                 style={{ width: hasAnalyzed ? "auto" : undefined, flex: hasAnalyzed ? 1 : undefined, minWidth: 0, height: "100%" }}
               >
                 <div className="lang-bar-mobile" style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
@@ -623,7 +663,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
               </div>
 
               {hasAnalyzed && (
-                <div className="analysis-panel result-wrapper-mobile" style={{ width: "370px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none" }}>
+                <div className={`analysis-panel result-wrapper-mobile ${hasAnalyzed && mobileTab === 'editor' ? 'mobile-hide-on-tab' : ''}`} style={{ height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none" }}>
                   <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <label style={{ color: "var(--text-dim)", fontWeight: "bold" }}>Report:</label>
@@ -660,7 +700,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
             </div>
 
             <div style={{ padding: "20px 0 40px 0", display: "flex", justifyContent: "center" }}>
-              <div style={{ width: hasAnalyzed ? "100%" : "70%", maxWidth: hasAnalyzed ? "1000px" : "900px", transition: "width 0.5s ease" }}>
+              <div className="ai-assistant-container" style={{ width: hasAnalyzed ? "100%" : "70%", maxWidth: hasAnalyzed ? "1000px" : "900px", transition: "width 0.5s ease" }}>
                 <AiAssistant code={code} />
               </div>
             </div>

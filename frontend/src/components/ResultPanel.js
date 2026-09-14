@@ -12,7 +12,7 @@ function ResultPanel({ result, loading }) {
     const borderColor = isWarning ? 'rgba(245, 158, 11, 0.2)' : 'rgba(6, 182, 212, 0.2)';
 
     return (
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))", gap: "12px", width: "100%" }}>
         {items.map((item, i) => {
           // Remove literal "Label:" or "**Label:**" if the AI mistakenly included it verbatim
           const cleanText = item.replace(/^\*?\*?Label:\*?\*?\s*/i, '');
@@ -21,6 +21,8 @@ function ResultPanel({ result, loading }) {
             <li 
               key={i} 
               style={{ 
+                minWidth: 0,
+                wordBreak: "break-word",
                 display: "flex", 
                 alignItems: "flex-start",
                 gap: "12px",
@@ -42,8 +44,8 @@ function ResultPanel({ result, loading }) {
                  e.currentTarget.style.borderColor = borderColor;
               }}
             >
-              <div style={{ fontSize: "1.1rem", marginTop: "2px" }}>{isWarning ? '⚡' : '✨'}</div>
-              <div style={{ color: "var(--text-main)", fontSize: "0.95rem", lineHeight: "1.5" }}>
+              <div style={{ fontSize: "1.1rem", marginTop: "2px", flexShrink: 0 }}>{isWarning ? '⚡' : '✨'}</div>
+              <div style={{ color: "var(--text-main)", fontSize: "0.95rem", lineHeight: "1.5", minWidth: 0 }}>
                 {cleanText}
               </div>
             </li>
@@ -54,21 +56,21 @@ function ResultPanel({ result, loading }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%", maxWidth: "100%" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px" }}>
         {/* Time Complexity */}
-        <div style={{ backgroundColor: "var(--bg-input)", padding: "15px", borderRadius: "8px", borderTop: "3px solid var(--primary)", boxShadow: "0 2px 4px var(--shadow)", transition: "transform 0.2s" }}
+        <div style={{ minWidth: 0, backgroundColor: "var(--bg-input)", padding: "14px", borderRadius: "8px", borderTop: "3px solid var(--primary)", boxShadow: "0 2px 4px var(--shadow)", transition: "transform 0.2s" }}
              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.02)"}
              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "bold", letterSpacing: "0.5px", color: "var(--text-dim)" }}>TIME COMPLEXITY</div>
-          <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: "var(--primary)", marginTop: "6px" }}>{result.time || "N/A"}</div>
+          <div style={{ fontSize: "0.72rem", fontWeight: "bold", letterSpacing: "0.5px", color: "var(--text-dim)", textTransform: "uppercase" }}>TIME COMPLEXITY</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: "bold", color: "var(--primary)", marginTop: "6px", overflow: "hidden", textOverflow: "ellipsis" }}>{result.time || "N/A"}</div>
         </div>
         {/* Space Complexity */}
-        <div style={{ backgroundColor: "var(--bg-input)", padding: "15px", borderRadius: "8px", borderTop: "3px solid var(--secondary)", boxShadow: "0 2px 4px var(--shadow)", transition: "transform 0.2s" }}
+        <div style={{ minWidth: 0, backgroundColor: "var(--bg-input)", padding: "14px", borderRadius: "8px", borderTop: "3px solid var(--secondary)", boxShadow: "0 2px 4px var(--shadow)", transition: "transform 0.2s" }}
              onMouseEnter={e => e.currentTarget.style.transform = "scale(1.02)"}
              onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}>
-          <div style={{ fontSize: "0.75rem", fontWeight: "bold", letterSpacing: "0.5px", color: "var(--text-dim)" }}>SPACE COMPLEXITY</div>
-          <div style={{ fontSize: "1.3rem", fontWeight: "bold", color: "var(--secondary)", marginTop: "6px" }}>{result.space || "N/A"}</div>
+          <div style={{ fontSize: "0.72rem", fontWeight: "bold", letterSpacing: "0.5px", color: "var(--text-dim)", textTransform: "uppercase" }}>SPACE COMPLEXITY</div>
+          <div style={{ fontSize: "1.25rem", fontWeight: "bold", color: "var(--secondary)", marginTop: "6px", overflow: "hidden", textOverflow: "ellipsis" }}>{result.space || "N/A"}</div>
         </div>
       </div>
 

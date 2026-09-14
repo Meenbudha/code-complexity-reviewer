@@ -269,27 +269,39 @@ export default function RegisterPage({ onSwitchToLogin, onBackToHome }) {
                 onClick={onBackToHome}
                 style={{
                   alignSelf: "flex-start",
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
-                  gap: "6px",
-                  background: "none",
-                  border: "none",
-                  color: "#6b7280",
+                  gap: "8px",
+                  background: "rgba(241, 245, 249, 0.8)",
+                  border: "1px solid rgba(203, 213, 225, 0.8)",
+                  borderRadius: "20px",
+                  color: "#475569",
                   fontSize: "0.82rem",
                   fontWeight: "600",
                   cursor: "pointer",
-                  padding: 0,
-                  marginBottom: "16px",
-                  transition: "color 0.2s ease"
+                  padding: "6px 14px",
+                  marginBottom: "18px",
+                  transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
                 }}
-                onMouseEnter={e => e.currentTarget.style.color = "#06b6d4"}
-                onMouseLeave={e => e.currentTarget.style.color = "#6b7280"}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = "#0284c7";
+                  e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.5)";
+                  e.currentTarget.style.background = "rgba(6, 182, 212, 0.08)";
+                  e.currentTarget.style.transform = "translateX(-2px)";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = "#475569";
+                  e.currentTarget.style.borderColor = "rgba(203, 213, 225, 0.8)";
+                  e.currentTarget.style.background = "rgba(241, 245, 249, 0.8)";
+                  e.currentTarget.style.transform = "translateX(0)";
+                }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="19" y1="12" x2="5" y2="12"/>
                   <polyline points="12 19 5 12 12 5"/>
                 </svg>
-                ← Back to Home
+                Back to Home
               </button>
             )}
             <h2 style={{ margin: "0 0 24px", fontSize: "2rem", fontWeight: "800", color: "#111827", letterSpacing: "-0.6px" }}>Sign Up</h2>

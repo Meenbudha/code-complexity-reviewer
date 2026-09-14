@@ -11,6 +11,22 @@ function SidebarBone({ width = "80%" }) {
 }
 
 function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, isLoading, onOpenPricing, isPro }) {
+  const touchStartX = React.useRef(null);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const diff = e.changedTouches[0].clientX - touchStartX.current;
+    if (diff < -50 && isOpen) {
+      // Swiped left by 50px+ -> smooth close
+      toggleSidebar();
+    }
+    touchStartX.current = null;
+  };
+
   return (
     <>
       {/* Mobile Backdrop Overlay */}
@@ -24,12 +40,15 @@ function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, is
             background: "rgba(0, 0, 0, 0.65)",
             zIndex: 90,
             backdropFilter: "blur(3px)",
+            WebkitBackdropFilter: "blur(3px)"
           }}
         />
       )}
 
       <div
         className={`app-sidebar ${isOpen ? "sidebar-open" : ""}`}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         style={{
           width: isOpen ? "260px" : "68px",
           height: "100vh",

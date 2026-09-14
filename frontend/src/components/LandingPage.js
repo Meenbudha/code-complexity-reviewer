@@ -97,8 +97,13 @@ export default function LandingPage({
 
   return (
     <div style={{
+      minHeight: "100vh",
       height: "100vh",
       overflowY: "auto",
+      overflowX: "hidden",
+      maxWidth: "100vw",
+      width: "100%",
+      overscrollBehaviorX: "none",
       backgroundColor: "#080c18",
       color: "#f8fafc",
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -219,7 +224,11 @@ export default function LandingPage({
           .landing-header-inner { padding: 0 16px !important; }
           .landing-status-badge { display: none !important; }
           .landing-mobile-menu-btn { display: flex !important; }
-          .hero-section-mobile { padding: 40px 16px 50px !important; }
+          .hero-section-mobile { 
+            padding: 40px 16px 50px !important; 
+            overflow: hidden !important;
+            max-width: 100vw !important;
+          }
           .showcase-grid-mobile {
             grid-template-columns: 1fr !important;
           }
@@ -228,8 +237,13 @@ export default function LandingPage({
             white-space: nowrap !important;
             flex-wrap: nowrap !important;
             -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
             padding-bottom: 6px !important;
             width: 100% !important;
+            max-width: 100% !important;
+          }
+          .demo-tabs-container::-webkit-scrollbar {
+            display: none !important;
           }
         }
         @media (min-width: 769px) {
@@ -520,6 +534,7 @@ export default function LandingPage({
         maxWidth: "1280px",
         margin: "0 auto",
         position: "relative",
+        overflow: "hidden"
       }}>
         {/* Ambient background glow */}
         <div style={{
@@ -674,16 +689,19 @@ export default function LandingPage({
             </div>
 
             {/* Algorithm Selector Tabs */}
-            <div className="demo-tabs-container" style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {PRESET_DEMOS.map(demo => (
-                <button
-                  key={demo.id}
-                  onClick={() => setSelectedDemo(demo)}
-                  className={`demo-tab-btn ${selectedDemo.id === demo.id ? "active" : ""}`}
-                >
-                  {demo.title}
-                </button>
-              ))}
+            <div style={{ maxWidth: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
+              <div className="demo-tabs-container" style={{ display: "flex", gap: "6px" }}>
+                {PRESET_DEMOS.map(demo => (
+                  <button
+                    key={demo.id}
+                    onClick={() => setSelectedDemo(demo)}
+                    className={`demo-tab-btn ${selectedDemo.id === demo.id ? "active" : ""}`}
+                    style={{ flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    {demo.title}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -819,8 +837,9 @@ export default function LandingPage({
                 </div>
 
                 {/* Big-O Badges */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "12px", marginBottom: "20px" }}>
                   <div style={{
+                    minWidth: 0,
                     background: "rgba(6, 182, 212, 0.08)",
                     border: "1px solid rgba(6, 182, 212, 0.25)",
                     borderRadius: "14px",
@@ -829,7 +848,7 @@ export default function LandingPage({
                     <div style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase", fontWeight: "600", marginBottom: "4px" }}>
                       Time Complexity
                     </div>
-                    <div style={{ fontSize: "1.6rem", fontWeight: "900", color: "#38bdf8", fontFamily: "monospace" }}>
+                    <div style={{ fontSize: "1.6rem", fontWeight: "900", color: "#38bdf8", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {selectedDemo.time}
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>
@@ -838,6 +857,7 @@ export default function LandingPage({
                   </div>
 
                   <div style={{
+                    minWidth: 0,
                     background: "rgba(139, 92, 246, 0.08)",
                     border: "1px solid rgba(139, 92, 246, 0.25)",
                     borderRadius: "14px",
@@ -846,7 +866,7 @@ export default function LandingPage({
                     <div style={{ fontSize: "0.72rem", color: "#94a3b8", textTransform: "uppercase", fontWeight: "600", marginBottom: "4px" }}>
                       Space Complexity
                     </div>
-                    <div style={{ fontSize: "1.6rem", fontWeight: "900", color: "#c084fc", fontFamily: "monospace" }}>
+                    <div style={{ fontSize: "1.6rem", fontWeight: "900", color: "#c084fc", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {selectedDemo.space}
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "4px" }}>
