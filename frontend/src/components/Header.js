@@ -22,10 +22,10 @@ function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "onl
         @media (min-width: 769px) {
           .mobile-hamburger-btn { display: none !important; }
         }
-        @media (max-width: 480px) {
-          .status-text-full { display: none !important; }
+        @media (max-width: 600px) {
+          .status-pill-mobile { display: none !important; }
           .header-brand-ai { display: none !important; }
-          .pro-btn-text { display: none !important; }
+          .header-brand-text { display: none !important; }
         }
       `}</style>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

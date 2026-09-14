@@ -215,6 +215,7 @@ export default function LandingPage({
         }
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }
+          .desktop-auth-ctas { display: none !important; }
           .landing-header-inner { padding: 0 16px !important; }
           .landing-status-badge { display: none !important; }
           .landing-mobile-menu-btn { display: flex !important; }
@@ -351,7 +352,7 @@ export default function LandingPage({
 
           {/* Conditional Auth CTAs */}
           {isAuthenticated ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div className="desktop-auth-ctas" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -392,7 +393,7 @@ export default function LandingPage({
               </button>
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div className="desktop-auth-ctas" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <button
                 id="landing-signin-btn"
                 onClick={() => onNavigate("login")}
