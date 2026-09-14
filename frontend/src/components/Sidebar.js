@@ -12,22 +12,62 @@ function SidebarBone({ width = "80%" }) {
 
 function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, isLoading, onOpenPricing, isPro }) {
   return (
-    <div
-      style={{
-        width: isOpen ? "260px" : "68px",
-        height: "100vh",
-        backgroundColor: "var(--bg-panel)",
-        borderRight: "1px solid var(--border)",
-        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        position: "relative",
-        zIndex: 20
-      }}
-    >
-      <div style={{ padding: "10px", width: "260px" }}>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isOpen && (
+        <div
+          className="sidebar-mobile-backdrop"
+          onClick={toggleSidebar}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.65)",
+            zIndex: 90,
+            backdropFilter: "blur(3px)",
+          }}
+        />
+      )}
+
+      <div
+        className={`app-sidebar ${isOpen ? "sidebar-open" : ""}`}
+        style={{
+          width: isOpen ? "260px" : "68px",
+          height: "100vh",
+          backgroundColor: "var(--bg-panel)",
+          borderRight: "1px solid var(--border)",
+          transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          flexShrink: 0,
+          position: "relative",
+          zIndex: 95
+        }}
+      >
+        <style>{`
+          @media (max-width: 768px) {
+            .app-sidebar {
+              position: fixed !important;
+              top: 0 !important;
+              left: 0 !important;
+              height: 100vh !important;
+              width: 280px !important;
+              z-index: 100 !important;
+              transform: translateX(-100%);
+              transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+              box-shadow: 0 0 50px rgba(0, 0, 0, 0.8) !important;
+            }
+            .app-sidebar.sidebar-open {
+              transform: translateX(0) !important;
+            }
+          }
+          @media (min-width: 769px) {
+            .sidebar-mobile-backdrop {
+              display: none !important;
+            }
+          }
+        `}</style>
+        <div style={{ padding: "10px", width: "260px" }}>
 
         {/* Menu Toggle Button */}
         <div
@@ -185,7 +225,8 @@ function Sidebar({ isOpen, history, onSelect, onNew, darkMode, toggleSidebar, is
         </div>
       </div>
     </div>
-  );
+  </>
+);
 }
 
 export default Sidebar;

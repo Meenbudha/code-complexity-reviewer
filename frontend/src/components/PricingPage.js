@@ -83,7 +83,33 @@ export default function PricingPage({ onBackToDashboard }) {
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="pricing-container">
+      <style>{`
+        @media (max-width: 768px) {
+          .pricing-container {
+            padding: 20px 14px 60px !important;
+          }
+          .pricing-toggle-wrapper {
+            flex-direction: column !important;
+            width: 100% !important;
+            max-width: 340px !important;
+          }
+          .pricing-toggle-wrapper button {
+            width: 100% !important;
+            text-align: center !important;
+            padding: 8px 12px !important;
+          }
+          .pricing-cards-grid {
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+          }
+          .feature-table-scroll {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+        }
+      `}</style>
+
       {/* Top Banner Navigation */}
       <div style={styles.topBar}>
         <button style={styles.backBtn} onClick={onBackToDashboard}>
@@ -107,7 +133,7 @@ export default function PricingPage({ onBackToDashboard }) {
         </p>
 
         {/* Billing Cycle Toggle */}
-        <div style={styles.toggleWrapper}>
+        <div style={styles.toggleWrapper} className="pricing-toggle-wrapper">
           <button
             style={billingCycle === "monthly" ? styles.toggleActive : styles.toggleBtn}
             onClick={() => setBillingCycle("monthly")}
@@ -130,7 +156,7 @@ export default function PricingPage({ onBackToDashboard }) {
       </div>
 
       {/* Pricing Cards */}
-      <div style={styles.cardsGrid}>
+      <div style={styles.cardsGrid} className="pricing-cards-grid">
         {/* Free Plan Card */}
         <div style={styles.cardFree}>
           <div style={styles.cardHeader}>

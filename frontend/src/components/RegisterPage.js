@@ -164,6 +164,26 @@ export default function RegisterPage({ onSwitchToLogin, onBackToHome }) {
         .rp-btn:active:not(:disabled){transform:translateY(0)}
         .mesh{background-image:linear-gradient(rgba(6,182,212,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,0.05) 1px,transparent 1px);background-size:36px 36px}
         ::placeholder{color:#9ca3af!important}
+        @media (max-width: 860px) {
+          .rp-card {
+            flex-direction: column !important;
+            min-height: auto !important;
+            max-width: 440px !important;
+            width: 92% !important;
+            margin: 20px auto !important;
+            border-radius: 20px !important;
+          }
+          .mesh {
+            display: none !important;
+          }
+          .rp-right-panel {
+            width: 100% !important;
+            border-radius: 20px !important;
+          }
+          .rp-form-inner {
+            padding: 0 24px 28px !important;
+          }
+        }
       `}</style>
 
       {/* ── Floating card ──────────────────────────────────────────────── */}
@@ -212,7 +232,7 @@ export default function RegisterPage({ onSwitchToLogin, onBackToHome }) {
         </div>
 
         {/* ═══ RIGHT — white form panel ══════════════════════════════════ */}
-        <div style={{
+        <div className="rp-right-panel" style={{
           width: "420px", flexShrink: 0, display: "flex", flexDirection: "column",
           background: "#ffffff", position: "relative",
         }}>
@@ -242,7 +262,7 @@ export default function RegisterPage({ onSwitchToLogin, onBackToHome }) {
           </div>
 
           {/* Form area — vertically centered */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "20px 40px 24px" }}>
+          <div className="rp-form-inner" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "20px 40px 24px" }}>
             {onBackToHome && (
               <button
                 type="button"

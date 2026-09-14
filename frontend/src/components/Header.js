@@ -1,6 +1,6 @@
 import React from 'react';
 
-function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "online" }) {
+function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "online", onToggleSidebar }) {
   return (
     <header style={{
       height: "60px",
@@ -8,15 +8,56 @@ function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "onl
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "0 20px",
+      padding: "0 16px",
       flexShrink: 0,
-      borderBottom: "1px solid rgba(108, 99, 255, 0.15)"
+      borderBottom: "1px solid rgba(108, 99, 255, 0.15)",
+      position: "relative",
+      zIndex: 10
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .desktop-home-label { display: none !important; }
+          .header-home-btn { padding: 5px 8px !important; }
+        }
+        @media (min-width: 769px) {
+          .mobile-hamburger-btn { display: none !important; }
+        }
+        @media (max-width: 480px) {
+          .status-text-full { display: none !important; }
+          .header-brand-ai { display: none !important; }
+          .pro-btn-text { display: none !important; }
+        }
+      `}</style>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+
+        {/* Mobile Sidebar Hamburger Toggle */}
+        {onToggleSidebar && (
+          <button
+            className="mobile-hamburger-btn"
+            onClick={onToggleSidebar}
+            style={{
+              background: "rgba(255, 255, 255, 0.08)",
+              border: "1px solid rgba(51, 65, 85, 0.7)",
+              borderRadius: "8px",
+              color: "#94a3b8",
+              width: "34px",
+              height: "34px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "1.1rem",
+              padding: 0
+            }}
+            title="Open History"
+          >
+            ☰
+          </button>
+        )}
 
         {/* Brand / Logo */}
         <div 
-          style={{ display: "flex", alignItems: "center", gap: "10px", cursor: onGoHome ? "pointer" : "default" }} 
+          style={{ display: "flex", alignItems: "center", gap: "8px", cursor: onGoHome ? "pointer" : "default" }} 
           onClick={onGoHome || undefined}
           title={onGoHome ? "Return to CodeMind AI Home" : undefined}
         >
@@ -72,26 +113,26 @@ function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "onl
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
-            Home
+            <span className="desktop-home-label">Home</span>
           </button>
         )}
       </div>
 
       {/* Right side — Status, Pro upgrade button + user badge */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }} className="header-actions-mobile">
         {/* Subtle Service status */}
         <div style={{
           display: "flex",
           alignItems: "center",
-          gap: "6px",
-          padding: "4px 10px",
+          gap: "5px",
+          padding: "4px 8px",
           borderRadius: "16px",
           background: serviceStatus === "online" ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.1)",
           border: `1px solid ${serviceStatus === "online" ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.25)"}`,
           fontSize: "0.72rem",
           fontWeight: "600",
           color: serviceStatus === "online" ? "#10b981" : "#f59e0b",
-        }}>
+        }} className="status-pill-mobile">
           <div style={{
             width: "6px",
             height: "6px",
@@ -99,7 +140,7 @@ function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "onl
             backgroundColor: serviceStatus === "online" ? "#10b981" : "#f59e0b",
             boxShadow: serviceStatus === "online" ? "0 0 6px #10b981" : "0 0 6px #f59e0b"
           }} />
-          <span>{serviceStatus === "online" ? "Online" : "Warming..."}</span>
+          <span className="status-text-full">{serviceStatus === "online" ? "Online" : "Warming"}</span>
         </div>
 
         {onOpenPricing && (

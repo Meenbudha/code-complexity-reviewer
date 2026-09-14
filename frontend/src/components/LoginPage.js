@@ -120,6 +120,26 @@ export default function LoginPage({ onSwitchToRegister, onBackToHome }) {
         .lp-btn:active:not(:disabled){transform:translateY(0)}
         .mesh{background-image:linear-gradient(rgba(6,182,212,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,0.05) 1px,transparent 1px);background-size:36px 36px}
         ::placeholder{color:#9ca3af!important}
+        @media (max-width: 860px) {
+          .lp-card {
+            flex-direction: column !important;
+            min-height: auto !important;
+            max-width: 440px !important;
+            width: 92% !important;
+            margin: 20px auto !important;
+            border-radius: 20px !important;
+          }
+          .mesh {
+            display: none !important;
+          }
+          .lp-right-panel {
+            width: 100% !important;
+            border-radius: 20px !important;
+          }
+          .lp-form-inner {
+            padding: 0 24px 28px !important;
+          }
+        }
       `}</style>
 
       {/* ── Floating card ──────────────────────────────────────────────── */}
@@ -168,7 +188,7 @@ export default function LoginPage({ onSwitchToRegister, onBackToHome }) {
         </div>
 
         {/* ═══ RIGHT — white form panel ══════════════════════════════════ */}
-        <div style={{
+        <div className="lp-right-panel" style={{
           width:"420px", flexShrink:0, display:"flex", flexDirection:"column",
           background:"#ffffff", position:"relative",
         }}>
@@ -198,7 +218,7 @@ export default function LoginPage({ onSwitchToRegister, onBackToHome }) {
           </div>
 
           {/* Form area — vertically centered */}
-          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"0 40px 28px"}}>
+          <div className="lp-form-inner" style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"0 40px 28px"}}>
             {onBackToHome && (
               <button
                 type="button"

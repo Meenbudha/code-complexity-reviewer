@@ -544,10 +544,11 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
           onGoHome={onGoHome}
           serviceStatus={serviceStatus}
           isPro={isPro}
+          onToggleSidebar={() => setIsSidebarOpen(prev => !prev)}
         />
 
         <div className="scrollable-workspace">
-          <div style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
+          <div className="workspace-container" style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", padding: "0 50px", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
 
             <div className={`welcome-hero ${hasAnalyzed ? 'hidden' : ''}`}>
               <h1 style={{ fontSize: "2.5rem", marginBottom: "10px", color: "var(--text-hero)" }}>
@@ -560,6 +561,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
 
             <div
               ref={containerRef}
+              className="editor-result-split"
               style={{
                 height: `${topSectionHeight}px`,
                 display: "flex",
@@ -573,7 +575,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
                 className={`editor-wrapper ${hasAnalyzed ? 'analyzed' : 'initial'}`}
                 style={{ width: hasAnalyzed ? "auto" : undefined, flex: hasAnalyzed ? 1 : undefined, minWidth: 0, height: "100%" }}
               >
-                <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
+                <div className="lang-bar-mobile" style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <label style={{ color: "var(--text-dim)", fontWeight: "600", fontSize: "0.9rem" }}>Language:</label>
                     <select
@@ -621,7 +623,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
               </div>
 
               {hasAnalyzed && (
-                <div className="analysis-panel" style={{ width: "370px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none" }}>
+                <div className="analysis-panel result-wrapper-mobile" style={{ width: "370px", flexShrink: 0, height: "100%", display: "flex", flexDirection: "column", backgroundColor: "transparent", border: "none" }}>
                   <div style={{ paddingBottom: "10px", display: "flex", alignItems: "center", justifyContent: "space-between", height: "52px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <label style={{ color: "var(--text-dim)", fontWeight: "bold" }}>Report:</label>
@@ -648,6 +650,7 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
             </div>
 
             <div
+              className="desktop-resizer"
               onMouseDown={startResizing}
               style={{ height: "15px", width: "100%", cursor: "row-resize", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.8 }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = 1}

@@ -83,6 +83,7 @@ export default function LandingPage({
   const { isAuthenticated, user, isPro } = useAuth();
   const [selectedDemo, setSelectedDemo] = useState(PRESET_DEMOS[0]);
   const [copied, setCopied] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(selectedDemo.code);
@@ -212,6 +213,28 @@ export default function LandingPage({
             radial-gradient(circle at 80% 25%, rgba(139, 92, 246, 0.12) 0%, transparent 45%),
             radial-gradient(circle at 50% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 50%);
         }
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+          .landing-header-inner { padding: 0 16px !important; }
+          .landing-status-badge { display: none !important; }
+          .landing-mobile-menu-btn { display: flex !important; }
+          .hero-section-mobile { padding: 40px 16px 50px !important; }
+          .showcase-grid-mobile {
+            grid-template-columns: 1fr !important;
+          }
+          .demo-tabs-container {
+            overflow-x: auto !important;
+            white-space: nowrap !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch !important;
+            padding-bottom: 6px !important;
+            width: 100% !important;
+          }
+        }
+        @media (min-width: 769px) {
+          .landing-mobile-menu-btn { display: none !important; }
+          .landing-mobile-menu-drawer { display: none !important; }
+        }
       `}</style>
 
       {/* ── TOP STICKY NAVBAR ────────────────────────────────────────────── */}
@@ -303,7 +326,7 @@ export default function LandingPage({
         {/* Right side — Status indicator & Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           {/* Subtle Service Status Badge */}
-          <div style={{
+          <div className="landing-status-badge" style={{
             display: "flex",
             alignItems: "center",
             gap: "7px",
@@ -404,11 +427,94 @@ export default function LandingPage({
               </button>
             </div>
           )}
+
+          {/* Mobile Menu Toggle Button */}
+          <button
+            className="landing-mobile-menu-btn"
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            style={{
+              background: "rgba(255, 255, 255, 0.08)",
+              border: "1px solid rgba(51, 65, 85, 0.7)",
+              borderRadius: "8px",
+              color: "#94a3b8",
+              width: "36px",
+              height: "36px",
+              display: "none",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              fontSize: "1.2rem",
+              padding: 0
+            }}
+            title="Toggle Menu"
+          >
+            {mobileMenuOpen ? "✕" : "☰"}
+          </button>
         </div>
       </header>
 
+      {/* ── MOBILE NAVIGATION DRAWER ── */}
+      {mobileMenuOpen && (
+        <div
+          className="landing-mobile-menu-drawer"
+          style={{
+            position: "fixed",
+            top: "70px",
+            left: 0,
+            right: 0,
+            background: "rgba(8, 12, 24, 0.98)",
+            borderBottom: "1px solid rgba(51, 65, 85, 0.6)",
+            padding: "20px 24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.8)",
+            backdropFilter: "blur(20px)",
+            zIndex: 99
+          }}
+        >
+          <a href="#features" onClick={() => setMobileMenuOpen(false)} className="landing-nav-link" style={{ fontSize: "1rem" }}>Features</a>
+          <a href="#demo" onClick={() => setMobileMenuOpen(false)} className="landing-nav-link" style={{ fontSize: "1rem" }}>Live Demo</a>
+          <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="landing-nav-link" style={{ fontSize: "1rem" }}>How It Works</a>
+          <button
+            onClick={() => { setMobileMenuOpen(false); onNavigate("pricing"); }}
+            className="landing-nav-link"
+            style={{ background: "none", border: "none", padding: 0, textAlign: "left", fontSize: "1rem" }}
+          >
+            Pricing
+          </button>
+          <div style={{ height: "1px", background: "rgba(51, 65, 85, 0.5)", margin: "4px 0" }} />
+          {isAuthenticated ? (
+            <button
+              onClick={() => { setMobileMenuOpen(false); onNavigate("dashboard"); }}
+              className="cta-btn-primary"
+              style={{ width: "100%", justifyContent: "center" }}
+            >
+              Go to Workspace →
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                onClick={() => { setMobileMenuOpen(false); onNavigate("login"); }}
+                className="cta-btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => { setMobileMenuOpen(false); onNavigate("register"); }}
+                className="cta-btn-primary"
+                style={{ flex: 1, justifyContent: "center" }}
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── HERO SECTION ─────────────────────────────────────────────────── */}
-      <section className="mesh-bg" style={{
+      <section className="mesh-bg hero-section-mobile" style={{
         padding: "70px 24px 80px",
         maxWidth: "1280px",
         margin: "0 auto",
@@ -567,7 +673,7 @@ export default function LandingPage({
             </div>
 
             {/* Algorithm Selector Tabs */}
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            <div className="demo-tabs-container" style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
               {PRESET_DEMOS.map(demo => (
                 <button
                   key={demo.id}
@@ -581,9 +687,9 @@ export default function LandingPage({
           </div>
 
           {/* Main Showcase Body (Split View) */}
-          <div style={{
+          <div className="showcase-grid-mobile" style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
             minHeight: "360px",
           }}>
             {/* Left: Code Snippet */}
