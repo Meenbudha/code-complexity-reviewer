@@ -5,7 +5,7 @@ import CodeEditor from "./components/CodeEditor";
 import ResultPanel from "./components/ResultPanel";
 import ComplexityGraph from "./components/ComplexityGraph";
 import AiAssistant from "./components/AiAssistant";
-import WarmupScreen from "./components/WarmupScreen";
+import LandingPage from "./components/LandingPage";
 import PricingPage from "./components/PricingPage";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
@@ -15,25 +15,112 @@ import "./index.css";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUTH GATE — shows Login or Register until the user is authenticated
+// APP ROUTER — manages seamless navigation (Landing, Login, Register, Dashboard, Pricing)
 // ─────────────────────────────────────────────────────────────────────────────
-function AuthGate() {
+function AppRouter() {
   const { isAuthenticated } = useAuth();
-  const [showRegister, setShowRegister] = useState(false);
+  const [view, setView] = useState("landing"); // "landing" | "dashboard" | "login" | "register" | "pricing"
+  const [serviceStatus, setServiceStatus] = useState("online");
 
-  if (!isAuthenticated) {
-    return showRegister
-      ? <RegisterPage onSwitchToLogin={() => setShowRegister(false)} />
-      : <LoginPage    onSwitchToRegister={() => setShowRegister(true)} />;
+  // Non-blocking background health check
+  useEffect(() => {
+    let isMounted = true;
+    const checkServices = async () => {
+      try {
+        const mlUrl = process.env.REACT_APP_ML_URL || "http://localhost:8000";
+        const [bRes, mRes] = await Promise.allSettled([
+          fetch(`${BACKEND_URL}/`, { cache: "no-store" }),
+          fetch(`${mlUrl}/`, { cache: "no-store" })
+        ]);
+        const isAllOk = bRes.status === "fulfilled" && bRes.value.ok &&
+                        mRes.status === "fulfilled" && mRes.value.ok;
+        if (isMounted) {
+          setServiceStatus(isAllOk ? "online" : "waking");
+        }
+      } catch {
+        if (isMounted) setServiceStatus("waking");
+      }
+    };
+    checkServices();
+    const interval = setInterval(checkServices, 12000);
+    return () => { isMounted = false; clearInterval(interval); };
+  }, []);
+
+  // When user signs in or registers successfully, transition to dashboard
+  useEffect(() => {
+    if (isAuthenticated && (view === "login" || view === "register")) {
+      setView("dashboard");
+    }
+  }, [isAuthenticated, view]);
+
+  // 1. Landing Page (Default Real Website Opening View)
+  if (view === "landing") {
+    return (
+      <LandingPage
+        onNavigate={(targetView) => {
+          if (targetView === "dashboard" && !isAuthenticated) {
+            setView("register");
+          } else {
+            setView(targetView);
+          }
+        }}
+        serviceStatus={serviceStatus}
+      />
+    );
   }
 
-  return <MainApp />;
+  // 2. Sign In View
+  if (view === "login") {
+    return (
+      <LoginPage
+        onSwitchToRegister={() => setView("register")}
+        onBackToHome={() => setView("landing")}
+      />
+    );
+  }
+
+  // 3. Register View
+  if (view === "register") {
+    return (
+      <RegisterPage
+        onSwitchToLogin={() => setView("login")}
+        onBackToHome={() => setView("landing")}
+      />
+    );
+  }
+
+  // 4. Standalone Pricing View
+  if (view === "pricing") {
+    return (
+      <PricingPage
+        onBackToDashboard={() => setView(isAuthenticated ? "dashboard" : "landing")}
+      />
+    );
+  }
+
+  // 5. Workspace / Dashboard View (Protected)
+  if (!isAuthenticated) {
+    return (
+      <LoginPage
+        onSwitchToRegister={() => setView("register")}
+        onBackToHome={() => setView("landing")}
+      />
+    );
+  }
+
+  return (
+    <MainApp
+      onGoHome={() => setView("landing")}
+      onOpenPricing={() => setView("pricing")}
+      serviceStatus={serviceStatus}
+    />
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // USER BADGE — shown in the top-right corner when logged in
 // ─────────────────────────────────────────────────────────────────────────────
-function UserBadge({ analysisCount = 0 }) {
+function UserBadge({ analysisCount = 0, onLogout }) {
   const { user, logout, isPro } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -211,7 +298,7 @@ function UserBadge({ analysisCount = 0 }) {
             <button
               id="logout-btn"
               className="profile-signout"
-              onClick={() => { setOpen(false); logout(); }}
+              onClick={() => { setOpen(false); logout(); if (onLogout) onLogout(); }}
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: "10px",
                 background: "none", border: "none", borderRadius: "10px",
@@ -243,12 +330,8 @@ function UserBadge({ analysisCount = 0 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP — the full dashboard (only shown when authenticated)
 // ─────────────────────────────────────────────────────────────────────────────
-function MainApp() {
+function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
   const { token, isPro } = useAuth();
-
-  // --- Warmup gate: show splash until backend + ML service are awake ---
-  const [isWarmedUp, setIsWarmedUp] = useState(false);
-  const handleWarmupReady = useCallback(() => setIsWarmedUp(true), []);
 
   const [activeTab, setActiveTab] = useState("dashboard"); // "dashboard" | "pricing"
 
@@ -428,11 +511,6 @@ function MainApp() {
     setHasAnalyzed(false);
   };
 
-  // --- Show warmup screen until services are awake ---
-  if (!isWarmedUp) {
-    return <WarmupScreen onReady={handleWarmupReady} />;
-  }
-
   if (activeTab === "pricing") {
     return <PricingPage onBackToDashboard={() => setActiveTab("dashboard")} />;
   }
@@ -461,8 +539,10 @@ function MainApp() {
       <div className="main-content">
         {/* Header with user badge injected via userSlot prop */}
         <Header
-          userSlot={<UserBadge analysisCount={history.length} />}
-          onOpenPricing={() => setActiveTab("pricing")}
+          userSlot={<UserBadge analysisCount={history.length} onLogout={onGoHome} />}
+          onOpenPricing={onOpenPricing || (() => setActiveTab("pricing"))}
+          onGoHome={onGoHome}
+          serviceStatus={serviceStatus}
           isPro={isPro}
         />
 
@@ -600,15 +680,9 @@ function MainApp() {
 // ROOT — wraps everything in AuthProvider
 // ─────────────────────────────────────────────────────────────────────────────
 function App() {
-  const [isWarmedUp, setIsWarmedUp] = useState(false);
-
-  if (!isWarmedUp) {
-    return <WarmupScreen onReady={() => setIsWarmedUp(true)} />;
-  }
-
   return (
     <AuthProvider>
-      <AuthGate />
+      <AppRouter />
     </AuthProvider>
   );
 }

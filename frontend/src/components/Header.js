@@ -1,6 +1,6 @@
 import React from 'react';
 
-function Header({ userSlot, onOpenPricing, isPro }) {
+function Header({ userSlot, onOpenPricing, isPro, onGoHome, serviceStatus = "online" }) {
   return (
     <header style={{
       height: "60px",
@@ -15,7 +15,11 @@ function Header({ userSlot, onOpenPricing, isPro }) {
       <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
 
         {/* Brand / Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer" }} onClick={onOpenPricing ? () => {} : null}>
+        <div 
+          style={{ display: "flex", alignItems: "center", gap: "10px", cursor: onGoHome ? "pointer" : "default" }} 
+          onClick={onGoHome || undefined}
+          title={onGoHome ? "Return to CodeMind AI Home" : undefined}
+        >
           <img
             src="/codemind-logo.png"
             alt="CodeMind AI Logo"
@@ -42,10 +46,62 @@ function Header({ userSlot, onOpenPricing, isPro }) {
             }}>AI</span>
           </h2>
         </div>
+
+        {/* Home Navigation button */}
+        {onGoHome && (
+          <button
+            onClick={onGoHome}
+            style={{
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(51, 65, 85, 0.6)",
+              color: "#94a3b8",
+              padding: "4px 10px",
+              borderRadius: "8px",
+              fontSize: "0.78rem",
+              fontWeight: "600",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              transition: "all 0.2s"
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#38bdf8"; e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.4)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.borderColor = "rgba(51, 65, 85, 0.6)"; }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
+            </svg>
+            Home
+          </button>
+        )}
       </div>
 
-      {/* Right side — Pro upgrade button + user badge */}
+      {/* Right side — Status, Pro upgrade button + user badge */}
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        {/* Subtle Service status */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "4px 10px",
+          borderRadius: "16px",
+          background: serviceStatus === "online" ? "rgba(16, 185, 129, 0.08)" : "rgba(245, 158, 11, 0.1)",
+          border: `1px solid ${serviceStatus === "online" ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.25)"}`,
+          fontSize: "0.72rem",
+          fontWeight: "600",
+          color: serviceStatus === "online" ? "#10b981" : "#f59e0b",
+        }}>
+          <div style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            backgroundColor: serviceStatus === "online" ? "#10b981" : "#f59e0b",
+            boxShadow: serviceStatus === "online" ? "0 0 6px #10b981" : "0 0 6px #f59e0b"
+          }} />
+          <span>{serviceStatus === "online" ? "Online" : "Warming..."}</span>
+        </div>
+
         {onOpenPricing && (
           <button
             onClick={onOpenPricing}

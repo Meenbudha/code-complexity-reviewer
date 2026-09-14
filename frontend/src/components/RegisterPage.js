@@ -71,7 +71,7 @@ function CodePreview() {
   );
 }
 
-export default function RegisterPage({ onSwitchToLogin }) {
+export default function RegisterPage({ onSwitchToLogin, onBackToHome }) {
   const { login } = useAuth();
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
@@ -219,7 +219,11 @@ export default function RegisterPage({ onSwitchToLogin }) {
           {/* Top nav row */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "28px 40px 0" }}>
             {/* Logo */}
-            <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+            <div 
+              onClick={onBackToHome} 
+              style={{ display: "flex", alignItems: "center", gap: "9px", cursor: onBackToHome ? "pointer" : "default" }}
+              title={onBackToHome ? "Back to CodeMind AI Home" : undefined}
+            >
               <div style={{ position: "relative", flexShrink: 0 }}>
                 <img src="/codemind-logo.png" alt="CodeMind AI" style={{ width: "32px", height: "32px", borderRadius: "8px", objectFit: "contain", display: "block" }} />
                 <div style={{ position: "absolute", inset: "-2px", borderRadius: "10px", background: "conic-gradient(from 0deg,#06b6d4,#8b5cf6,#06b6d4)", zIndex: -1, animation: "spinRing 4s linear infinite", opacity: 0.7 }} />
@@ -239,6 +243,35 @@ export default function RegisterPage({ onSwitchToLogin }) {
 
           {/* Form area — vertically centered */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "20px 40px 24px" }}>
+            {onBackToHome && (
+              <button
+                type="button"
+                onClick={onBackToHome}
+                style={{
+                  alignSelf: "flex-start",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "none",
+                  border: "none",
+                  color: "#6b7280",
+                  fontSize: "0.82rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  padding: 0,
+                  marginBottom: "16px",
+                  transition: "color 0.2s ease"
+                }}
+                onMouseEnter={e => e.currentTarget.style.color = "#06b6d4"}
+                onMouseLeave={e => e.currentTarget.style.color = "#6b7280"}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="19" y1="12" x2="5" y2="12"/>
+                  <polyline points="12 19 5 12 12 5"/>
+                </svg>
+                ← Back to Home
+              </button>
+            )}
             <h2 style={{ margin: "0 0 24px", fontSize: "2rem", fontWeight: "800", color: "#111827", letterSpacing: "-0.6px" }}>Sign Up</h2>
 
             <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
