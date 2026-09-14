@@ -554,16 +554,6 @@ function MainApp({ onGoHome, onOpenPricing, serviceStatus }) {
         <div className="scrollable-workspace">
           <div className="workspace-container" style={{ width: "100%", maxWidth: "1280px", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", minHeight: "100%" }}>
 
-            <div className={`welcome-hero ${hasAnalyzed ? 'hidden' : ''}`}>
-              <div className="welcome-badge">⚡ AI Code Intelligence</div>
-              <h1 className="welcome-title">
-                Code<span style={{ color: "var(--primary)" }}>Mind</span> AI
-              </h1>
-              <p className="welcome-sub">
-                Advanced Complexity Analysis &amp; AI Review
-              </p>
-            </div>
-
             {/* Mobile View Switcher (Only visible on mobile when analyzed) */}
             {hasAnalyzed && (
               <div className="mobile-view-tabs">
